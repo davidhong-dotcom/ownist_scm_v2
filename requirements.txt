@@ -1,0 +1,8 @@
+streamlit>=1.35.0
+pandas>=2.0.0
+numpy>=1.26.0
+openpyxl>=3.1.0
+xlrd>=2.0.1
+# pytz: Python 3.9+ 환경에서는 zoneinfo(표준 라이브러리) 사용
+gspread>=6.0.0
+google-auth>=2.29.0
