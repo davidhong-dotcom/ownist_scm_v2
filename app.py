@@ -20,6 +20,9 @@ from data.processor import (
     parse_shipping_file,
     parse_ownist_shipping_file,
     parse_daily_shipping_file,
+    parse_shinsegae_file,
+    load_code_mapping_from_gsheet,
+    translate_product_codes,
     filter_shipping_by_date,
     aggregate_shipping_daily,
     compute_metrics,
@@ -100,6 +103,7 @@ st.markdown(DASHBOARD_CSS, unsafe_allow_html=True)
 # ════════════════════════════════════════════════
 for _k, _v in {
     "master_df": None,
+    "mapping_df": None,
     "inventory_df": None,
     "shipping_df": None, # 이제 Supabase에서 조회한 전체 데이터 담음
 }.items():
@@ -114,6 +118,7 @@ DEFAULT_GSHEET_URL = "https://docs.google.com/spreadsheets/d/1NxEiNIh0UK0XHfDiqn
 if st.session_state["master_df"] is None:
     try:
         st.session_state["master_df"] = load_master_from_gsheet(DEFAULT_GSHEET_URL)
+        st.session_state["mapping_df"] = load_code_mapping_from_gsheet(DEFAULT_GSHEET_URL)
     except Exception as e:
         st.error(f"마스터 DB 자동 로드 실패: {e}")
 
@@ -167,94 +172,146 @@ if menu == "⚙️ 데이터 설정":
     st.markdown("## ⚙️ 데이터 설정 및 업데이트")
     st.markdown("이곳에서 마스터 DB 갱신, 현재고 업로드, 일자별 출고현황(Supabase 전송)을 수행할 수 있습니다.")
     
-    c1, c2, c3 = st.columns(3)
+    # 마스터 DB는 채널과 무관하게 공통 적용
+    st.markdown("### ① 공통 마스터 DB (Google Sheets)")
+    gsheet_url = st.text_input(
+        "Google Sheets URL (수동 갱신용)",
+        value=DEFAULT_GSHEET_URL,
+        placeholder="https://docs.google.com/spreadsheets/d/...",
+        help="편집 URL 또는 export CSV URL 모두 가능합니다. 시트명 'DB'가 기준입니다.",
+    )
+    if st.button("📥 마스터 DB 새로고침", use_container_width=False):
+        if not gsheet_url.strip():
+            render_error("Google Sheets URL을 입력해 주세요.")
+        else:
+            with st.spinner("마스터 DB 수동 로드 중..."):
+                try:
+                    import data.processor
+                    data.processor.load_master_from_gsheet.clear() # 캐시 초기화
+                    data.processor.load_code_mapping_from_gsheet.clear() # 매핑 시트 캐시 초기화
+                    st.session_state["master_df"] = load_master_from_gsheet(gsheet_url.strip())
+                    st.session_state["mapping_df"] = load_code_mapping_from_gsheet(gsheet_url.strip())
+                    render_success(f"마스터 DB 새로고침 완료 — {len(st.session_state['master_df'])}개 상품")
+                except Exception as e:
+                    render_error(f"마스터 DB 로드 실패: {e}")
+
+    st.divider()
+    st.markdown("### ② 채널별 데이터 업로드 (Supabase 연동)")
     
-    with c1:
-        st.markdown("### ① 마스터 DB (Google Sheets)")
-        gsheet_url = st.text_input(
-            "Google Sheets URL (수동 갱신용)",
-            value=DEFAULT_GSHEET_URL,
-            placeholder="https://docs.google.com/spreadsheets/d/...",
-            help="편집 URL 또는 export CSV URL 모두 가능합니다. 시트명 'DB'가 기준입니다.",
-        )
-        if st.button("📥 마스터 DB 새로고침", use_container_width=True):
-            if not gsheet_url.strip():
-                render_error("Google Sheets URL을 입력해 주세요.")
-            else:
-                with st.spinner("마스터 DB 수동 로드 중..."):
-                    try:
-                        import data.processor
-                        data.processor.load_master_from_gsheet.clear() # 캐시 초기화
-                        st.session_state["master_df"] = load_master_from_gsheet(gsheet_url.strip())
-                        render_success(f"마스터 DB 새로고침 완료 — {len(st.session_state['master_df'])}개 상품")
-                    except Exception as e:
-                        render_error(f"마스터 DB 로드 실패: {e}")
+    # 탭으로 채널 분리
+    upload_tabs = st.tabs(["CK로지스 (WMS)", "신세계면세점", "미국 (Amazon)"])
+    
+    with upload_tabs[0]:
+        st.markdown("**[CK로지스] 현재고 및 일자별 출고현황 업로드**")
+        c1, c2 = st.columns(2)
+        
+        with c1:
+            st.markdown("#### 현재고 파일")
+            inventory_file = st.file_uploader(
+                "현재고 (.xls / .xlsx)",
+                type=["xls", "xlsx"],
+                key="inv_upload_domestic",
+                help="예: 현재고_YYYYMMDD.xls (적치존 기준)",
+            )
+            if inventory_file:
+                if st.button("🚀 현재고 Supabase 전송", key="btn_inv_dom", use_container_width=True):
+                    with st.spinner("현재고 파일 처리 및 전송 중..."):
+                        try:
+                            new_inv_df = parse_inventory_file(inventory_file)
+                            upsert_count = upsert_inventory_data(new_inv_df, channel="CK로지스")
+                            st.session_state["inventory_df"] = fetch_inventory_data()
+                            render_success(f"[CK로지스] 현재고 업데이트 완료 — {upsert_count}개 상품")
+                        except Exception as e:
+                            render_error(f"현재고 파일 오류: {e}")
 
-    with c2:
-        st.markdown("### ② 현재고 파일 (Supabase 업로드)")
-        inventory_file = st.file_uploader(
-            "현재고 (.xls / .xlsx)",
+        with c2:
+            st.markdown("#### 출고완료 내역")
+            shipping_file = st.file_uploader(
+                "일자별 출고현황 (.xls, .xlsx)",
+                type=["xls", "xlsx"],
+                key="ship_upload_domestic",
+                help="일자별 출고현황_YYYYMMDD.xls 파일을 올려주세요.",
+            )
+            if shipping_file:
+                if st.button("🚀 출고 데이터 Supabase 전송", key="btn_ship_dom", use_container_width=True):
+                    with st.spinner("파일 처리 및 전송 중..."):
+                        try:
+                            new_shipping_df = parse_daily_shipping_file(shipping_file)
+                            upsert_count, filtered_df = upsert_ownist_shipping(new_shipping_df, channel="CK로지스")
+                            st.session_state["shipping_df"] = None  # 캐시 초기화
+                            
+                            min_date = filtered_df['출고일자'].min() if not filtered_df.empty else "-"
+                            max_date = filtered_df['출고일자'].max() if not filtered_df.empty else "-"
+                            
+                            render_success(f"[CK로지스] 출고 업데이트 완료! ({upsert_count}건 반영, {min_date}~{max_date})")
+                        except Exception as e:
+                            render_error(f"출고현황 처리 오류: {e}")
+
+    with upload_tabs[1]:
+        st.markdown("**[신세계면세점] 기간 누적 마감 엑셀 업로드**")
+        st.info(
+            "💡 **[중요]** 엑셀 파일의 실제 **조회 기간(시작일~종료일)**을 정확히 선택해 주세요.\n\n"
+            "시스템이 선택하신 기간 내의 과거 업로드 내역을 조회하여, **'순수하게 추가로 발생한 출고량(Delta)'**만 추출하여 종료일 날짜로 저장합니다."
+        )
+        
+        # 시작일 - 종료일 범위 선택 UI (최근 7일 기본값)
+        today = get_today_kst()
+        default_start = today - timedelta(days=7)
+        ssg_date_range = st.date_input("엑셀 조회 기간 (시작일 - 종료일)", value=(default_start, today))
+        
+        ssg_file = st.file_uploader(
+            "신세계면세점 마감 엑셀 (.xls / .xlsx)",
             type=["xls", "xlsx"],
-            key="inv_upload",
-            help="예: 현재고_20260623_164931.xls\n'적치존' 기준으로 상품코드별 합산하여 모든 유저에게 공유됩니다.",
+            key="ssg_upload",
+            help="선택한 기간 동안의 누적 판매수량 및 기말재고가 포함된 파일을 업로드하세요.",
         )
-        if inventory_file:
-            if st.button("🚀 현재고 Supabase 전송", use_container_width=True):
-                with st.spinner("현재고 파일 처리 및 Supabase 전송 중..."):
+        
+        if ssg_file:
+            if st.button("🚀 신세계면세점 데이터 전송", key="btn_ssg", use_container_width=True):
+                # 기간 선택 값 확인
+                if isinstance(ssg_date_range, tuple) and len(ssg_date_range) == 2:
+                    start_date, end_date = ssg_date_range
+                elif isinstance(ssg_date_range, tuple) and len(ssg_date_range) == 1:
+                    start_date = end_date = ssg_date_range[0]
+                else:
+                    start_date = end_date = ssg_date_range
+
+                with st.spinner("파일 역산 처리 및 Supabase 전송 중..."):
                     try:
-                        new_inv_df = parse_inventory_file(inventory_file)
-                        upsert_count = upsert_inventory_data(new_inv_df)
-                        # 방금 업로드한 데이터를 내 세션에도 즉시 반영
-                        st.session_state["inventory_df"] = fetch_inventory_data()
-                        render_success(f"현재고 업데이트 완료 — {upsert_count}개 상품 (Supabase 공유됨)")
-                    except Exception as e:
-                        render_error(f"현재고 파일 오류: {e}")
-
-    with c3:
-        st.markdown("### ③ 출고현황 업데이트 (일자별 출고현황)")
-        st.markdown(
-            "**`일자별 출고현황_YYYYMMDD_HHMMSS.xls`** 파일을 업로드합니다.\n\n"
-            "이전 양식과 달리 암호가 필요하지 않습니다."
-        )
-
-        shipping_file = st.file_uploader(
-            "출고완료 내역 (.xls, .xlsx)",
-            type=["xls", "xlsx"],
-            key="ship_upload",
-            help="일자별 출고현황_YYYYMMDD_HHMMSS.xls 파일을 올려주세요.",
-        )
-
-        if shipping_file:
-            if st.button("🚀 Supabase에 데이터 저장/업데이트", use_container_width=True):
-                with st.spinner("파일 처리 및 Supabase 전송 중..."):
-                    try:
-                        new_shipping_df = parse_daily_shipping_file(shipping_file)
-                        upsert_count, filtered_df = upsert_ownist_shipping(new_shipping_df)
-                        st.session_state["shipping_df"] = None  # 캐시 초기화
+                        # end_date를 기준 일자로 사용하되, start_date 정보도 함께 전달
+                        ship_df, inv_df = parse_shinsegae_file(ssg_file, end_date)
                         
-                        min_date = filtered_df['출고일자'].min() if not filtered_df.empty else "-"
-                        max_date = filtered_df['출고일자'].max() if not filtered_df.empty else "-"
+                        # [코드 매핑 적용] 신세계면세점 상품코드를 표준 마스터 DB 코드로 변환
+                        mapping_df = st.session_state.get("mapping_df")
+                        if mapping_df is not None and not mapping_df.empty:
+                            ship_df = translate_product_codes(ship_df, "신세계면세점", mapping_df)
+                            inv_df = translate_product_codes(inv_df, "신세계면세점", mapping_df)
                         
-                        render_success(
-                            f"Supabase 업데이트 완료! 중복 제외 총 {upsert_count}건 반영됨.\n"
-                            f"({min_date} ~ {max_date})"
+                        # Dataframe에 start_date 메타데이터 심기 (upsert_ownist_shipping에서 활용)
+                        ship_df["조회시작일"] = start_date
+                        
+                        # 1. 재고 데이터 업데이트
+                        inv_count = upsert_inventory_data(inv_df, channel="신세계면세점")
+                        
+                        # 2. 출고 데이터 업데이트 (누적 데이터 차감 로직 적용)
+                        ship_count, filtered_df = upsert_ownist_shipping(
+                            ship_df, channel="신세계면세점", is_cumulative=True
                         )
                         
-                        if master_ok:
-                            master_codes = st.session_state["master_df"]["상품코드"].astype(str).str.strip().unique()
-                            missing_df = new_shipping_df[~new_shipping_df["상품코드"].astype(str).str.strip().isin(master_codes)]
-                            if not missing_df.empty:
-                                missing_sum = missing_df["출고량"].sum()
-                                st.warning(
-                                    f"⚠️ **주의:** 업로드한 파일에 '마스터 DB(Google Sheets)'에 없는 상품코드 {len(missing_df['상품코드'].unique())}종 "
-                                    f"(총 출고량 {missing_sum:,.0f}개)가 포함되어 있습니다. "
-                                    f"이 데이터들은 Supabase에는 정상 저장되었지만, 대시보드 통계 화면에서는 제외됩니다."
-                                )
-                        # 미리보기 표시
-                        with st.expander("📋 업로드 데이터 미리보기 (중복 제외)"):
-                            st.dataframe(filtered_df.head(20), use_container_width=True)
+                        # 세션 초기화 및 재조회
+                        st.session_state["inventory_df"] = fetch_inventory_data()
+                        st.session_state["shipping_df"] = None
+                        
+                        render_success(f"[신세계면세점] 업데이트 완료! (재고 {inv_count}건, 순수 일일 출고 {ship_count}건 반영)")
+                        
+                        with st.expander("📋 신세계 일일 순수 출고량(Delta) 미리보기"):
+                            st.dataframe(filtered_df.head(10), use_container_width=True)
+                            
                     except Exception as e:
-                        render_error(f"출고현황 처리/전송 오류: {e}")
+                        render_error(f"신세계면세점 데이터 처리 오류: {e}")
+        
+    with upload_tabs[2]:
+        st.info("🚧 미국(Amazon 등) 전용 업로드 파싱 로직 및 UI는 [Phase 1] 진행에 따라 곧 추가될 예정입니다.")
 
     st.divider()
     
@@ -301,8 +358,8 @@ if st.session_state["shipping_df"].empty:
 # ════════════════════════════════════════════════
 st.markdown('<div class="sticky-header"></div>', unsafe_allow_html=True)
 with st.container():
-    # 필터 영역 디자인
-    fc1, fc2, fc3, fc4 = st.columns([1, 1, 1, 1])
+    # 필터 영역 디자인 (5열로 확장)
+    fc1, fc2, fc_ch, fc3, fc4 = st.columns([1, 1, 1, 1, 1])
     
     # 1) 구분 필터
     구분_opts = ["전체"] + sorted(st.session_state["master_df"]["구분"].dropna().unique().tolist())
@@ -311,8 +368,14 @@ with st.container():
     # 2) 품목구분 필터
     품목_opts = ["전체"] + sorted(st.session_state["master_df"]["품목구분"].dropna().unique().tolist())
     sel_품목 = fc2.selectbox("품목구분", 품목_opts, key="fil_품목_공통")
+
+    # 3) 채널 필터
+    inv_ch = st.session_state["inventory_df"]["채널"].unique().tolist() if not st.session_state["inventory_df"].empty else []
+    ship_ch = st.session_state["shipping_df"]["채널"].unique().tolist() if not st.session_state["shipping_df"].empty else []
+    channel_opts = ["전체"] + sorted(list(set(inv_ch + ship_ch)))
+    sel_channel = fc_ch.selectbox("채널", channel_opts, key="fil_채널_공통")
     
-    # 3) 날짜 필터 (출고현황 등에 영향)
+    # 4) 날짜 필터 (출고현황 등에 영향)
     start_date = fc3.date_input("출고 시작일", value=today - timedelta(days=30))
     end_date = fc4.date_input("출고 종료일", value=today)
     
@@ -320,14 +383,24 @@ with st.container():
 
 
 # ════════════════════════════════════════════════
-# 데이터 필터링 적용 (master_df 기준)
+# 데이터 필터링 적용
 # ════════════════════════════════════════════════
+# 1. 마스터 DB 필터링
 filtered_master = st.session_state["master_df"].copy()
 if sel_구분 != "전체":
     filtered_master = filtered_master[filtered_master["구분"] == sel_구분]
 if sel_품목 != "전체":
     filtered_master = filtered_master[filtered_master["품목구분"] == sel_품목]
 
+# 2. 인벤토리/출고 데이터 채널 필터링
+filtered_inv = st.session_state["inventory_df"].copy()
+filtered_ship = st.session_state["shipping_df"].copy()
+
+if sel_channel != "전체":
+    if "채널" in filtered_inv.columns:
+        filtered_inv = filtered_inv[filtered_inv["채널"] == sel_channel]
+    if "채널" in filtered_ship.columns:
+        filtered_ship = filtered_ship[filtered_ship["채널"] == sel_channel]
 
 # ════════════════════════════════════════════════
 # 메뉴: 📊 재고 대시보드
@@ -336,20 +409,26 @@ if menu == "📊 재고 대시보드":
     try:
         metrics_df = compute_metrics(
             filtered_master,
-            st.session_state["inventory_df"],
-            st.session_state["shipping_df"],
+            filtered_inv,
+            filtered_ship,
         )
 
         render_kpi_row(metrics_df, today)
 
-        # 안전재고 미달만 보기 체크박스
-        only_danger = st.checkbox("⚠️ 안전재고 미달만 보기", key="fil_danger")
+        # 보기 옵션 체크박스들
+        col_chk1, col_chk2 = st.columns(2)
+        with col_chk1:
+            only_danger = st.checkbox("⚠️ 안전재고 미달만 보기", key="fil_danger")
+        with col_chk2:
+            hide_zero = st.checkbox("🚫 현재고 0 숨기기", key="fil_hide_zero", value=True)
 
         view = metrics_df.copy()
         if only_danger:
             view = view[
                 view["안전재고 미만"].apply(lambda v: isinstance(v, (int, float)) and v < 0)
             ]
+        if hide_zero:
+            view = view[view["현재고"] > 0]
 
         render_metrics_table(view)
 

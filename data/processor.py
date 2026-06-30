@@ -98,13 +98,55 @@ def load_master_from_gsheet(spreadsheet_url: str, sheet_name: str = "DB") -> pd.
     required = ["구분", "품목구분", "상품코드", "상품명"]
     missing = [c for c in required if c not in df.columns]
     if missing:
-        raise KeyError(
-            f"마스터 DB에 필수 컬럼이 없습니다: {missing}\n"
-            f"실제 컬럼: {list(df.columns)}"
-        )
-
+        raise ValueError(f"마스터 DB에 필수 컬럼이 누락되었습니다: {missing}")
+    
     df["상품코드"] = df["상품코드"].str.strip()
     return df[required].query("상품코드 != ''").reset_index(drop=True)
+
+
+@st.cache_data(ttl=3600)
+def load_code_mapping_from_gsheet(spreadsheet_url: str) -> pd.DataFrame:
+    """
+    Google Sheets에서 채널별 상품코드 매핑 테이블 로드.
+    (현재 '신세계면세점' 시트의 A열=채널상품코드, C열=표준상품코드 지원)
+    """
+    mapping_dfs = []
+    
+    try:
+        csv_url = build_gsheet_csv_url(spreadsheet_url, "신세계면세점")
+        df = pd.read_csv(csv_url, dtype=str).fillna("")
+        
+        if df.shape[1] >= 3:
+            sub_df = pd.DataFrame({
+                "채널": "신세계면세점",
+                "채널상품코드": df.iloc[:, 0].str.strip(),
+                "표준상품코드": df.iloc[:, 2].str.strip()
+            })
+            sub_df = sub_df[(sub_df["채널상품코드"] != "") & (sub_df["표준상품코드"] != "")]
+            sub_df["채널상품코드"] = sub_df["채널상품코드"].str.replace(r'\.0$', '', regex=True)
+            mapping_dfs.append(sub_df)
+    except Exception as e:
+        print(f"신세계면세점 매핑 시트 로드 에러: {e}")
+        pass
+    
+    if mapping_dfs:
+        return pd.concat(mapping_dfs, ignore_index=True)
+        
+    return pd.DataFrame(columns=["채널", "채널상품코드", "표준상품코드"])
+
+
+def translate_product_codes(df: pd.DataFrame, channel: str, mapping_df: pd.DataFrame) -> pd.DataFrame:
+    """매핑 테이블을 참조하여 DataFrame 내부의 '상품코드'를 표준상품코드로 일괄 변환"""
+    if mapping_df.empty or "상품코드" not in df.columns:
+        return df
+        
+    channel_map = mapping_df[mapping_df["채널"] == channel]
+    if channel_map.empty:
+        return df
+        
+    mapping_dict = dict(zip(channel_map["채널상품코드"], channel_map["표준상품코드"]))
+    df["상품코드"] = df["상품코드"].apply(lambda code: mapping_dict.get(str(code).strip(), code))
+    return df
 
 
 def load_master_from_file(file_obj) -> pd.DataFrame:
@@ -319,6 +361,48 @@ def parse_shipping_file(file_obj) -> pd.DataFrame:
 
 
 # ────────────────────────────────────────────────
+# 일자별 마감 현황 파일 파싱 (신세계면세점)
+# ────────────────────────────────────────────────
+def parse_shinsegae_file(file_obj, target_date: datetime.date) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    신세계면세점 일일 마감 엑셀 파일 파싱.
+    하나의 파일에서 출고(판매) 내역과 기말재고를 동시 추출.
+    """
+    df = pd.read_excel(file_obj, header=[0, 1], dtype=str)
+    
+    new_cols = []
+    for col in df.columns:
+        if col[0] == '상품코드': new_cols.append('상품코드')
+        elif col[0] == '상품명': new_cols.append('상품명')
+        elif col[0] == '판매' and col[1] == '수량': new_cols.append('출고량')
+        elif col[0] == '판매' and col[1] == '금액': new_cols.append('주문금액합계')
+        elif col[0] == '기말재고' and col[1] == '수량': new_cols.append('현재고')
+        else: new_cols.append(f"{col[0]}_{col[1]}" if isinstance(col, tuple) else str(col))
+            
+    df.columns = new_cols
+    
+    df = df.dropna(subset=['상품코드'])
+    df['상품코드'] = df['상품코드'].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
+    df = df[df['상품코드'] != '']
+    
+    # Shipping Data 구성 (판매수량이 0 초과인 것만)
+    ship_df = df[['상품코드', '상품명', '출고량', '주문금액합계']].copy()
+    ship_df['출고량'] = clean_numeric(ship_df['출고량'])
+    ship_df['주문금액합계'] = clean_numeric(ship_df['주문금액합계'])
+    ship_df = ship_df[ship_df['출고량'] > 0].copy()
+    
+    ship_df['출고일자'] = target_date
+    ship_df['주문사'] = '신세계면세점'
+    ship_df['주문번호'] = f"SSG-{target_date.strftime('%Y%m%d')}"
+    
+    # Inventory Data 구성 (기말재고)
+    inv_df = df[['상품코드', '현재고']].copy()
+    inv_df['현재고'] = clean_numeric(inv_df['현재고'])
+    
+    return ship_df, inv_df
+
+
+# ────────────────────────────────────────────────
 # 출고 데이터 필터링 / 집계
 # ────────────────────────────────────────────────
 def filter_shipping_by_date(df: pd.DataFrame, start_date, end_date) -> pd.DataFrame:
@@ -338,9 +422,10 @@ def aggregate_shipping_daily(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def aggregate_shipping_by_product(df: pd.DataFrame) -> pd.DataFrame:
-    """상품코드별 총 출고수량 집계"""
+    """상품코드 및 채널별 총 출고수량 집계"""
+    group_cols = ["상품코드", "채널"] if "채널" in df.columns else ["상품코드"]
     return (
-        df.groupby("상품코드", as_index=False)["출고수량"]
+        df.groupby(group_cols, as_index=False)["출고수량"]
           .sum()
           .rename(columns={"출고수량": "총출고수량"})
     )
@@ -349,6 +434,23 @@ def aggregate_shipping_by_product(df: pd.DataFrame) -> pd.DataFrame:
 # ────────────────────────────────────────────────
 # 지표 산출 (핵심 비즈니스 로직)
 # ────────────────────────────────────────────────
+def get_previous_three_months(today_date: "datetime.date") -> tuple["datetime.date", "datetime.date"]:
+    """현재 월을 제외한 직전 3개월의 시작일과 종료일을 반환"""
+    # 이번 달 1일
+    first_day_this_month = today_date.replace(day=1)
+    # 직전 달 마지막 날 (종료일)
+    end_date = first_day_this_month - timedelta(days=1)
+    
+    # 3개월 전 1일 (시작일)
+    target_month = today_date.month - 3
+    target_year = today_date.year
+    if target_month <= 0:
+        target_month += 12
+        target_year -= 1
+    start_date = datetime(target_year, target_month, 1).date()
+    
+    return start_date, end_date
+
 def compute_metrics(
     master_df: pd.DataFrame,
     inventory_df: pd.DataFrame,
@@ -363,22 +465,35 @@ def compute_metrics(
     반환: 지표 테이블 DataFrame
     """
     today   = get_today_kst()
-    cutoff  = today - timedelta(days=RECENT_DAYS)
+    start_date, end_date = get_previous_three_months(today)
+    
+    # 해당 기간(직전 3개월)의 총 일수 계산
+    target_days = (end_date - start_date).days + 1
 
-    # 최근 90일 출고 집계
-    recent     = filter_shipping_by_date(shipping_df, cutoff, today)
+    # 직전 3개월 출고 집계 (당월 제외)
+    recent     = filter_shipping_by_date(shipping_df, start_date, end_date)
     recent_agg = aggregate_shipping_by_product(recent)
 
     # 마스터 기준 병합
     df = master_df.merge(inventory_df, on="상품코드", how="left")
-    df = df.merge(recent_agg, on="상품코드", how="left")
+    
+    # recent_agg를 병합할 때 채널이 있다면 채널도 기준으로 삼음
+    if "채널" in df.columns and "채널" in recent_agg.columns:
+        df = df.merge(recent_agg, on=["상품코드", "채널"], how="left")
+    else:
+        df = df.merge(recent_agg, on="상품코드", how="left")
+        
     df["현재고"]    = df["현재고"].fillna(0)
     df["총출고수량"] = df["총출고수량"].fillna(0)
+
+    # 채널 결측치 처리 (마스터에만 있고 재고/출고 내역이 없는 상품)
+    if "채널" in df.columns:
+        df["채널"] = df["채널"].fillna("-")
 
     # ── 지표 계산 ──────────────────────────────
     df["3개월 총출고량"]      = df["총출고수량"]
     df["3개월 월평균 출고량"]  = df["3개월 총출고량"] / 3
-    df["3개월 일평균 출고량"]  = df["3개월 총출고량"] / RECENT_DAYS
+    df["3개월 일평균 출고량"]  = df["3개월 총출고량"] / target_days
 
     df["사용가능(월)"] = df.apply(
         lambda r: safe_divide(r["현재고"], r["3개월 월평균 출고량"]), axis=1
@@ -390,14 +505,18 @@ def compute_metrics(
     df["안전재고 미만"] = df["현재고"] - df["안전재고"]
     df["예상소진일"]    = df["사용가능(일)"].apply(lambda v: _calc_expiry(v, today))
 
-    cols = [
+    cols = []
+    if "채널" in df.columns:
+        cols.append("채널")
+        
+    cols.extend([
         "구분", "품목구분", "상품코드", "상품명",
         "현재고",
         "3개월 총출고량", "3개월 월평균 출고량", "3개월 일평균 출고량",
         "사용가능(월)", "사용가능(일)",
         "안전재고", "안전재고 미만",
         "예상소진일",
-    ]
+    ])
     return df[cols].reset_index(drop=True)
 
 
