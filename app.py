@@ -114,11 +114,12 @@ for _k, _v in {
 # 자동 로딩 로직 (마스터 DB 및 현재고 DB)
 # ════════════════════════════════════════════════
 DEFAULT_GSHEET_URL = "https://docs.google.com/spreadsheets/d/1NxEiNIh0UK0XHfDiqntcG4tdJai_emkyEz-rTwfr4q4/edit?gid=1703000362#gid=1703000362"
+DEFAULT_MAPPING_URL = "https://docs.google.com/spreadsheets/d/1NxEiNIh0UK0XHfDiqntcG4tdJai_emkyEz-rTwfr4q4/edit?gid=275066073#gid=275066073"
 
 if st.session_state["master_df"] is None:
     try:
         st.session_state["master_df"] = load_master_from_gsheet(DEFAULT_GSHEET_URL)
-        st.session_state["mapping_df"] = load_code_mapping_from_gsheet(DEFAULT_GSHEET_URL)
+        st.session_state["mapping_df"] = load_code_mapping_from_gsheet(DEFAULT_MAPPING_URL)
     except Exception as e:
         st.error(f"마스터 DB 자동 로드 실패: {e}")
 
@@ -190,7 +191,7 @@ if menu == "⚙️ 데이터 설정":
                     data.processor.load_master_from_gsheet.clear() # 캐시 초기화
                     data.processor.load_code_mapping_from_gsheet.clear() # 매핑 시트 캐시 초기화
                     st.session_state["master_df"] = load_master_from_gsheet(gsheet_url.strip())
-                    st.session_state["mapping_df"] = load_code_mapping_from_gsheet(gsheet_url.strip())
+                    st.session_state["mapping_df"] = load_code_mapping_from_gsheet(DEFAULT_MAPPING_URL)
                     render_success(f"마스터 DB 새로고침 완료 — {len(st.session_state['master_df'])}개 상품")
                 except Exception as e:
                     render_error(f"마스터 DB 로드 실패: {e}")
