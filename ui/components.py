@@ -248,7 +248,7 @@ def render_kpi_row(metrics_df: pd.DataFrame, today):
 # ════════════════════════════════════════════════
 # 재고 지표 테이블
 # ════════════════════════════════════════════════
-def render_metrics_table(metrics_df: pd.DataFrame):
+def render_metrics_table(metrics_df: pd.DataFrame, key: str = None):
     st.markdown('<div class="sec-title">📊 재고 지표 테이블</div>', unsafe_allow_html=True)
 
     display = metrics_df.copy()
@@ -283,11 +283,13 @@ def render_metrics_table(metrics_df: pd.DataFrame):
     st.dataframe(styled, use_container_width=True, height=500)
 
     csv = metrics_df.to_csv(index=False, encoding="utf-8-sig")
+    dl_key = f"dl_btn_{key}" if key else "dl_btn_default"
     st.download_button(
         "⬇️ 지표 테이블 CSV 다운로드",
         data=csv,
         file_name=f"재고지표_{date.today().strftime('%Y%m%d')}.csv",
         mime="text/csv",
+        key=dl_key
     )
 
 

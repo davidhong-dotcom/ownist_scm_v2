@@ -267,11 +267,15 @@ def upsert_inventory_data(df: pd.DataFrame, channel: str = "CK로지스") -> int
     # 1. 해당 채널의 데이터만 초기화 (삭제)
     supabase.table("inventory_data").delete().eq("channel", channel).execute()
     
-    # 2. 새 데이터 생성
+    # 2. 동일 상품코드끼리 현재고 합산 (원시 데이터 내 중복 방지)
+    df_agg = df.groupby("상품코드", as_index=False)["현재고"].sum()
+
     records = []
-    for _, row in df.iterrows():
+    for _, row in df_agg.iterrows():
+        # 채널명을 상품코드 뒤에 붙여 고유 키 생성 (Supabase PK 중복 방지)
+        unique_code = f"{str(row['상품코드']).strip()}_{channel}"
         records.append({
-            "product_code": str(row["상품코드"]).strip(),
+            "product_code": unique_code,
             "stock_quantity": float(row["현재고"]),
             "updated_at": datetime.datetime.utcnow().isoformat(),
             "channel": channel,
@@ -304,6 +308,18 @@ def fetch_inventory_data() -> pd.DataFrame:
         return None
 
     df = pd.DataFrame(data)
+    
+    # 생성된 고유 키에서 채널명 접미사 제거하여 원래 상품코드로 복원
+    def clean_code(row):
+        code = str(row['product_code'])
+        ch = str(row.get('channel', ''))
+        suffix = f"_{ch}"
+        if ch and code.endswith(suffix):
+            return code[:-len(suffix)]
+        return code
+        
+    df['product_code'] = df.apply(clean_code, axis=1)
+
     df = df.rename(columns={
         "product_code": "상품코드",
         "stock_quantity": "현재고",

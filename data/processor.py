@@ -102,45 +102,62 @@ def load_master_from_gsheet(spreadsheet_url: str, sheet_name: str = "DB") -> pd.
     
     df["상품코드"] = df["상품코드"].str.strip()
     return df[required].query("상품코드 != ''").reset_index(drop=True)
-
-
 @st.cache_data(ttl=3600)
 def load_code_mapping_from_gsheet(spreadsheet_url: str) -> pd.DataFrame:
     """
     Google Sheets에서 채널별 상품코드 매핑 테이블 로드.
-    (현재 '신세계면세점' 시트의 A열=채널상품코드, C열=표준상품코드 지원)
+    사용자 제공 포맷: A열=채널상품코드, C열=표준상품코드 (모든 채널 공통 적용 'ALL')
     """
     mapping_dfs = []
     
     try:
-        csv_url = build_gsheet_csv_url(spreadsheet_url, "신세계면세점")
+        csv_url = build_gsheet_csv_url(spreadsheet_url, "채널매핑")
         df = pd.read_csv(csv_url, dtype=str).fillna("")
         
+        # 1. 통합 매핑 시트 구조 확인 (A열, C열)
         if df.shape[1] >= 3:
             sub_df = pd.DataFrame({
-                "채널": "신세계면세점",
-                "채널상품코드": df.iloc[:, 0].str.strip(),
-                "표준상품코드": df.iloc[:, 2].str.strip()
+                "채널": "ALL",  # 모든 채널 공통 적용
+                "채널상품코드": df.iloc[:, 0].astype(str).str.strip(),
+                "표준상품코드": df.iloc[:, 2].astype(str).str.strip()
             })
-            sub_df = sub_df[(sub_df["채널상품코드"] != "") & (sub_df["표준상품코드"] != "")]
+            sub_df = sub_df[(sub_df["채널상품코드"] != "") & (sub_df["표준상품코드"] != "") & (sub_df["채널상품코드"] != "상품코드")]
             sub_df["채널상품코드"] = sub_df["채널상품코드"].str.replace(r'\.0$', '', regex=True)
             mapping_dfs.append(sub_df)
     except Exception as e:
-        print(f"신세계면세점 매핑 시트 로드 에러: {e}")
+        print(f"채널매핑 시트 로드 에러: {e}")
         pass
+        
+    # 폴백: 기존 신세계면세점 단일 시트 구조
+    if not mapping_dfs:
+        try:
+            csv_url = build_gsheet_csv_url(spreadsheet_url, "신세계면세점")
+            df = pd.read_csv(csv_url, dtype=str).fillna("")
+            if df.shape[1] >= 3:
+                sub_df = pd.DataFrame({
+                    "채널": "신세계면세점",
+                    "채널상품코드": df.iloc[:, 0].str.strip(),
+                    "표준상품코드": df.iloc[:, 2].str.strip()
+                })
+                sub_df = sub_df[(sub_df["채널상품코드"] != "") & (sub_df["표준상품코드"] != "")]
+                sub_df["채널상품코드"] = sub_df["채널상품코드"].str.replace(r'\.0$', '', regex=True)
+                mapping_dfs.append(sub_df)
+        except Exception as e:
+            print(f"신세계면세점 매핑 시트 로드 에러: {e}")
+            pass
     
     if mapping_dfs:
         return pd.concat(mapping_dfs, ignore_index=True)
         
     return pd.DataFrame(columns=["채널", "채널상품코드", "표준상품코드"])
 
-
 def translate_product_codes(df: pd.DataFrame, channel: str, mapping_df: pd.DataFrame) -> pd.DataFrame:
     """매핑 테이블을 참조하여 DataFrame 내부의 '상품코드'를 표준상품코드로 일괄 변환"""
     if mapping_df.empty or "상품코드" not in df.columns:
         return df
         
-    channel_map = mapping_df[mapping_df["채널"] == channel]
+    # '채널' 필터링 ('ALL'이면 모든 채널 허용)
+    channel_map = mapping_df[(mapping_df["채널"] == channel) | (mapping_df["채널"] == "ALL")]
     if channel_map.empty:
         return df
         
@@ -361,45 +378,112 @@ def parse_shipping_file(file_obj) -> pd.DataFrame:
 
 
 # ────────────────────────────────────────────────
-# 일자별 마감 현황 파일 파싱 (신세계면세점)
+# 일자별 마감 현황 파일 파싱 (통합: 신세계, 롯데, 신라, 현대, 도착보장)
 # ────────────────────────────────────────────────
-def parse_shinsegae_file(file_obj, target_date: datetime.date) -> tuple[pd.DataFrame, pd.DataFrame]:
+def parse_multi_channel_file(file_obj, target_date: datetime.date, channel_name: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    신세계면세점 일일 마감 엑셀 파일 파싱.
-    하나의 파일에서 출고(판매) 내역과 기말재고를 동시 추출.
+    모든 면세점/도착보장 채널의 엑셀을 처리하는 통합 파서.
+    대표님이 확정하신 채널별 고정 알파벳(열) 인덱스를 기준으로 데이터를 추출합니다.
     """
-    df = pd.read_excel(file_obj, header=[0, 1], dtype=str)
+    try:
+        # 헤더 없이 순수 데이터로 모두 읽기 (열 인덱스 접근을 위해)
+        df = pd.read_excel(file_obj, header=None, dtype=str)
+    except Exception as e:
+        if "datetime" in str(e).lower() or "date" in str(e).lower():
+            raise ValueError(f"[{channel_name}] 엑셀 파일 내부에 손상된 날짜 포맷이 포함되어 파싱할 수 없습니다. 엑셀을 열고 '다른 이름으로 저장(덮어쓰기)' 한 뒤 다시 업로드해 주세요.")
+        raise
+        
+    code_col = None
+    ship_col = None
+    inv_col = None
+    amt_col = None
+
+    # 알파벳을 인덱스로 변환하는 헬퍼 (A=0, B=1, ..., Z=25, AA=26, AQ=42)
+    def col_idx(letter: str) -> int:
+        idx = 0
+        for char in letter.upper():
+            idx = idx * 26 + (ord(char) - ord('A') + 1)
+        return idx - 1
+
+    # 1. 채널별 하드코딩 매핑
+    if channel_name == "롯데면세점":
+        code_col = col_idx("K")
+        ship_col = col_idx("Z")
+        inv_col = col_idx("AQ")
+    elif channel_name == "도착보장":
+        code_col = col_idx("F")
+        ship_col = col_idx("P")  # 출고 B2C
+        inv_col = col_idx("V")   # 기말재고 가용
+    elif channel_name == "신라면세점":
+        # 신라는 파일 이름이나 데이터의 내용으로 재고/출고 구분
+        # B열(1)에 데이터가 있으면 보통 재고, G열(6)이면 출고
+        # 여기서는 파일 하나의 열 갯수나 첫 번째 행 텍스트로 구분
+        if df.shape[1] > col_idx("K") and "EC판매수량" in str(df.iloc[:, col_idx("K")]):
+            code_col = col_idx("G")
+            ship_col = col_idx("K")
+        elif df.shape[1] > col_idx("H"):
+            code_col = col_idx("B")
+            inv_col = col_idx("H")
+    elif channel_name == "신세계면세점":
+        code_col = col_idx("D")
+        ship_col = col_idx("Q")
+        inv_col = col_idx("S")
+    elif channel_name == "현대면세점":
+        code_col = col_idx("C")
+        ship_col = col_idx("T")
+        inv_col = col_idx("V")
+    else:
+        # Fallback (혹시 모를 에러 방지)
+        code_col = col_idx("A")
+
+    if code_col >= df.shape[1]:
+        raise ValueError(f"[{channel_name}] 파일의 열 개수가 부족합니다. (요구 열 인덱스: {code_col}, 실제 열 개수: {df.shape[1]})")
+
+    # 2. 데이터 추출
+    df = df.dropna(subset=[code_col])
+    # 헤더 행 등 상품코드가 아닌 한글 텍스트들은 0을 포함하지 않는 경우가 많아 필터링 (간단히 상품코드만 추출)
+    df[code_col] = df[code_col].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
+    df = df[(df[code_col] != '') & (df[code_col].str.lower() != 'nan')]
     
-    new_cols = []
-    for col in df.columns:
-        if col[0] == '상품코드': new_cols.append('상품코드')
-        elif col[0] == '상품명': new_cols.append('상품명')
-        elif col[0] == '판매' and col[1] == '수량': new_cols.append('출고량')
-        elif col[0] == '판매' and col[1] == '금액': new_cols.append('주문금액합계')
-        elif col[0] == '기말재고' and col[1] == '수량': new_cols.append('현재고')
-        else: new_cols.append(f"{col[0]}_{col[1]}" if isinstance(col, tuple) else str(col))
-            
-    df.columns = new_cols
+    # 헤더 행 제외 (상품코드가 일반적으로 알파벳/숫자 조합이므로 순수 한글이나 '상품코드' 문구 제외)
+    df = df[~df[code_col].str.contains("상품코드|SKU|Item", case=False, na=False)]
+
+    # Shipping Data 구성
+    ship_df = pd.DataFrame()
+    if ship_col is not None and ship_col < df.shape[1]:
+        ship_df = df[[code_col]].copy()
+        ship_df.columns = ['상품코드']
+        ship_df['상품명'] = ''
+        ship_df['출고량'] = clean_numeric(df[ship_col])
+        ship_df['주문금액합계'] = 0.0
+        
+        # 반품(음수)도 포함하기 위해 0이 아닌 것만 필터링
+        ship_df = ship_df[ship_df['출고량'] != 0].copy()
+        ship_df['출고일자'] = target_date
+        ship_df['주문사'] = channel_name
+        
+        prefix_map = {"신세계면세점": "SSG", "롯데면세점": "LOT", "신라면세점": "SLA", "현대면세점": "HYD", "도착보장": "NAV"}
+        prefix = prefix_map.get(channel_name, "ETC")
+        ship_df['주문번호'] = f"{prefix}-{target_date.strftime('%Y%m%d')}"
     
-    df = df.dropna(subset=['상품코드'])
-    df['상품코드'] = df['상품코드'].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
-    df = df[df['상품코드'] != '']
-    
-    # Shipping Data 구성 (판매수량이 0 초과인 것만)
-    ship_df = df[['상품코드', '상품명', '출고량', '주문금액합계']].copy()
-    ship_df['출고량'] = clean_numeric(ship_df['출고량'])
-    ship_df['주문금액합계'] = clean_numeric(ship_df['주문금액합계'])
-    ship_df = ship_df[ship_df['출고량'] > 0].copy()
-    
-    ship_df['출고일자'] = target_date
-    ship_df['주문사'] = '신세계면세점'
-    ship_df['주문번호'] = f"SSG-{target_date.strftime('%Y%m%d')}"
-    
-    # Inventory Data 구성 (기말재고)
-    inv_df = df[['상품코드', '현재고']].copy()
-    inv_df['현재고'] = clean_numeric(inv_df['현재고'])
+    # Inventory Data 구성
+    inv_df = pd.DataFrame()
+    if inv_col is not None and inv_col < df.shape[1]:
+        inv_df = df[[code_col]].copy()
+        inv_df.columns = ['상품코드']
+        inv_df['현재고'] = clean_numeric(df[inv_col])
+        # 현재고가 음수인 경우는 0으로 치환하거나 그대로 둘 수 있음 (보통 0이상 유지)
     
     return ship_df, inv_df
+
+def _find_col_by_keyword(df: pd.DataFrame, keywords: list, required: bool = True):
+    for kw in keywords:
+        for col in df.columns:
+            if kw in col:
+                return col
+    if required:
+        raise KeyError(f"필수 컬럼을 찾을 수 없습니다. (키워드: {keywords}) - 현재 컬럼: {list(df.columns)}")
+    return None
 
 
 # ────────────────────────────────────────────────
