@@ -295,6 +295,9 @@ if menu == "⚙️ 데이터 설정":
                     key=f"file_{tab_idx}",
                     help="선택한 기간 동안의 누적 판매수량 및 기말재고가 포함된 파일을 업로드하세요."
                 )
+            
+            skip_inventory = st.checkbox("🕰️ 과거 데이터 업로드 (체크 시 현재고는 덮어쓰지 않고 출고량만 누적합니다)", key=f"skip_inv_{tab_idx}")
+
             if files:
                 if st.button(f"🚀 {channel_name} 데이터 전송", key=f"btn_{tab_idx}", use_container_width=True):
                     # 매핑 데이터 방어 로직 (마스터 DB가 없을 경우 매핑 불가능)
@@ -327,7 +330,7 @@ if menu == "⚙️ 데이터 설정":
                             
                             # 1. 재고 데이터 업데이트
                             inv_count = 0
-                            if not all_inv_df.empty:
+                            if not skip_inventory and not all_inv_df.empty:
                                 inv_count = upsert_inventory_data(all_inv_df, channel=channel_name)
                             
                             # 2. 출고 데이터 업데이트
@@ -335,7 +338,7 @@ if menu == "⚙️ 데이터 설정":
                             filtered_df = pd.DataFrame()
                             if not all_ship_df.empty:
                                 ship_count, filtered_df = upsert_ownist_shipping(
-                                    all_ship_df, channel=channel_name, is_cumulative=True
+                                    all_ship_df, channel=channel_name
                                 )
                             
                             # 세션 초기화 및 재조회
@@ -493,7 +496,7 @@ elif menu == "📊 채널별 재고 대시보드":
 
         st.divider()
 
-        channels_list = ["도착보장", "롯데면세점", "신라면세점", "신세계면세점", "현대면세점"]
+        channels_list = ["CK로지스", "도착보장", "롯데면세점", "신라면세점", "신세계면세점", "현대면세점"]
         tabs = st.tabs(channels_list)
 
         for idx, ch_name in enumerate(channels_list):
