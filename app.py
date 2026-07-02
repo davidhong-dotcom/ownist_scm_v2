@@ -14,13 +14,20 @@ from datetime import date, timedelta
 import sys
 import importlib
 
-# 강제 모듈 리로드 (Streamlit 메모리 캐시 우회)
 if 'data.processor' in sys.modules:
     importlib.reload(sys.modules['data.processor'])
 if 'data.supabase_client' in sys.modules:
     importlib.reload(sys.modules['data.supabase_client'])
 if 'ui.components' in sys.modules:
     importlib.reload(sys.modules['ui.components'])
+if 'ui.sop_simulation' in sys.modules:
+    importlib.reload(sys.modules['ui.sop_simulation'])
+if 'ui.po_calendar' in sys.modules:
+    importlib.reload(sys.modules['ui.po_calendar'])
+if 'ui.projected_inventory' in sys.modules:
+    importlib.reload(sys.modules['ui.projected_inventory'])
+if 'ui.transfer_manager' in sys.modules:
+    importlib.reload(sys.modules['ui.transfer_manager'])
 
 import re
 
@@ -646,8 +653,9 @@ elif menu == "📦 발주 및 입고현황":
         # 필터링 적용 (구분, 품목구분 필터)
         disp_po = po_df[po_df["상품코드"].isin(filtered_master["상품코드"])].copy()
         
-        # 상품명 매핑(선택적) - 마스터 기준
-        disp_po = disp_po.merge(filtered_master[["상품코드", "상품명"]], on="상품코드", how="left", suffixes=("_po", "_master"))
+        # 상품명 매핑(선택적) - 마스터 기준 (상품코드 중복으로 인한 행 증식 방지)
+        master_names = filtered_master[["상품코드", "상품명"]].drop_duplicates(subset=["상품코드"])
+        disp_po = disp_po.merge(master_names, on="상품코드", how="left", suffixes=("_po", "_master"))
         disp_po["상품명"] = disp_po["상품명_master"].fillna(disp_po["상품명_po"])
         
         from ui.po_calendar import render_po_calendar

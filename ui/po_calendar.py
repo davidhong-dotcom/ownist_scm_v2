@@ -3,11 +3,22 @@ import pandas as pd
 import calendar
 from datetime import date, timedelta
 import math
+import hashlib
+
+def get_product_color(product_name):
+    palette = [
+        "#D32F2F", "#C2185B", "#7B1FA2", "#512DA8", "#303F9F", 
+        "#1976D2", "#0288D1", "#0097A7", "#00796B", "#388E3C", 
+        "#689F38", "#AFB42B", "#F57C00", "#E64A19", "#5D4037", 
+        "#616161", "#455A64"
+    ]
+    hash_val = int(hashlib.md5(str(product_name).encode('utf-8')).hexdigest(), 16)
+    return palette[hash_val % len(palette)]
 
 class POCalendar(calendar.HTMLCalendar):
-    def __init__(self, po_data_dict, year, month):
+    def __init__(self, po_data, year, month):
         super().__init__()
-        self.po_data = po_data_dict
+        self.po_data = po_data
         self.year = year
         self.month = month
 
@@ -20,11 +31,12 @@ class POCalendar(calendar.HTMLCalendar):
         po_html = ""
         if current_date in self.po_data:
             for po in self.po_data[current_date]:
-                # 입고완료면 회색, 아니면 파란색 계열
+                # 입고완료면 회색, 아니면 상품명 기반 고유 색상
                 is_done = "입고완료" in str(po['입고상태']).replace(" ", "")
-                bg_color = "#9e9e9e" if is_done else "#2196F3"
+                base_color = get_product_color(po["상품명"])
+                bg_color = "#9e9e9e" if is_done else base_color
                 text_dec = "line-through" if is_done else "none"
-                opacity = "0.7" if is_done else "1.0"
+                opacity = "0.6" if is_done else "1.0"
                 
                 po_html += f'<div style="background-color: {bg_color}; color: white; padding: 4px 6px; margin-top: 4px; border-radius: 4px; font-size: 11px; text-decoration: {text_dec}; opacity: {opacity}; line-height: 1.3;"><b>{po["외주처"]}</b><br>{po["상품명"]}<br>수량: {po["발주수량"]:,}</div>'
         

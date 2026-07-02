@@ -101,7 +101,18 @@ def load_master_from_gsheet(spreadsheet_url: str, sheet_name: str = "DB") -> pd.
         raise ValueError(f"마스터 DB에 필수 컬럼이 누락되었습니다: {missing}")
     
     df["상품코드"] = df["상품코드"].str.strip()
-    return df[required].query("상품코드 != ''").reset_index(drop=True)
+    
+    out_cols = required.copy()
+    if "내포입" in df.columns:
+        out_cols.append("내포입")
+        
+    res_df = df[out_cols].query("상품코드 != ''").reset_index(drop=True)
+    if "내포입" in res_df.columns:
+        res_df["내포입"] = pd.to_numeric(res_df["내포입"], errors="coerce").fillna(1)
+    else:
+        res_df["내포입"] = 1
+        
+    return res_df
 @st.cache_data(ttl=3600)
 def load_code_mapping_from_gsheet(spreadsheet_url: str) -> pd.DataFrame:
     """
