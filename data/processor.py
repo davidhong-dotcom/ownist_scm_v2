@@ -166,6 +166,117 @@ def translate_product_codes(df: pd.DataFrame, channel: str, mapping_df: pd.DataF
     return df
 
 
+@st.cache_data(ttl=3600)
+def load_po_from_gsheet(spreadsheet_url: str, sheet_name: str = "발주") -> pd.DataFrame:
+    """
+    Google Sheets에서 발주(PO) 및 입고 예정 데이터를 로드.
+    예상 컬럼: 발주번호, 외주처, 상품코드, 상품명, 발주수량, 납기예정일, 입고상태
+    """
+    try:
+        csv_url = build_gsheet_csv_url(spreadsheet_url, sheet_name)
+        df = pd.read_csv(csv_url, dtype=str).fillna("")
+        df.columns = df.columns.str.strip()
+
+        if "상품코드" not in df.columns:
+            # 사용자가 '상품코드' 대신 'WMS 상품코드(Plus CL)' 등을 쓴 경우를 대비한 맵핑
+            code_candidate = _find_col_by_keyword(df, ["상품코드", "품목코드"], required=False)
+            if code_candidate:
+                df["상품코드"] = df[code_candidate]
+            else:
+                print("발주 시트에 '상품코드'를 포함하는 컬럼이 없습니다.")
+                return pd.DataFrame()
+            
+        df["상품코드"] = df["상품코드"].str.strip()
+        df = df.query("상품코드 != ''").copy()
+        
+        # 외주처(발주처) 정제
+        vendor_col = _find_col(df, ["발주처", "외주처", "거래처"], required=False)
+        if vendor_col:
+            df["외주처"] = df[vendor_col].str.strip()
+        else:
+            df["외주처"] = ""
+            
+        # 상품명 정제
+        name_col = _find_col(df, ["제품명", "상품명"], required=False)
+        if name_col:
+            df["상품명"] = df[name_col].str.strip()
+        else:
+            df["상품명"] = ""
+        
+        # 수량 정제
+        qty_col = _find_col(df, ["발주수량", "수량", "입고예정수량"], required=False)
+        if qty_col:
+            df["발주수량"] = clean_numeric(df[qty_col])
+        else:
+            df["발주수량"] = 0.0
+            
+        # 납기예정일 정제
+        date_col = _find_col(df, ["납기예정", "납기예정일", "입고예정일", "예정일", "납기일"], required=False)
+        if date_col:
+            df["납기예정일"] = pd.to_datetime(df[date_col], errors="coerce").dt.date
+        else:
+            df["납기예정일"] = None
+            
+        # 상태 정제 (옵션)
+        status_col = _find_col(df, ["진행사항", "진행상태", "상태", "입고상태"], required=False)
+        if status_col:
+            df["입고상태"] = df[status_col].str.strip()
+        else:
+            df["입고상태"] = "대기"
+            
+        # 입고상태가 '완료'인 것은 시뮬레이션의 '예정' 수량에서 제외하기 위해 필요
+        return df.reset_index(drop=True)
+    except Exception as e:
+        print(f"PO 시트 로드 에러: {e}")
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=3600)
+def load_transfer_from_gsheet(spreadsheet_url: str, sheet_name: str = "선적") -> pd.DataFrame:
+    """
+    Google Sheets에서 국내->해외 선적(이동) 데이터를 로드.
+    예상 컬럼: 상품코드, 출발지, 도착지, 선적수량, 선적일, 하차예정일, 상태
+    """
+    try:
+        csv_url = build_gsheet_csv_url(spreadsheet_url, sheet_name)
+        df = pd.read_csv(csv_url, dtype=str).fillna("")
+        df.columns = df.columns.str.strip()
+
+        if "상품코드" not in df.columns:
+            code_candidate = _find_col_by_keyword(df, ["상품코드", "품목코드"], required=False)
+            if code_candidate:
+                df["상품코드"] = df[code_candidate]
+            else:
+                return pd.DataFrame()
+                
+        df["상품코드"] = df["상품코드"].str.strip()
+        df = df.query("상품코드 != ''").copy()
+        
+        # 기본 정보 매핑
+        source_col = _find_col(df, ["출발지", "출고처", "보내는곳"], required=False)
+        df["출발지"] = df[source_col].str.strip() if source_col else "CK로지스"
+        
+        dest_col = _find_col(df, ["도착지", "입고처", "받는곳"], required=False)
+        df["도착지"] = df[dest_col].str.strip() if dest_col else "US 창고"
+        
+        qty_col = _find_col(df, ["선적수량", "수량", "이동수량"], required=False)
+        df["선적수량"] = clean_numeric(df[qty_col]) if qty_col else 0.0
+        
+        depart_col = _find_col(df, ["선적일", "출발일", "출고일", "출고예정일"], required=False)
+        df["선적일"] = pd.to_datetime(df[depart_col], errors="coerce").dt.date if depart_col else None
+        
+        arrive_col = _find_col(df, ["하차예정일", "하차일", "도착예정일", "입고예정일"], required=False)
+        df["하차예정일"] = pd.to_datetime(df[arrive_col], errors="coerce").dt.date if arrive_col else None
+        
+        status_col = _find_col(df, ["상태", "진행상태", "진행사항"], required=False)
+        df["상태"] = df[status_col].str.strip() if status_col else "대기"
+
+        return df.reset_index(drop=True)
+    except Exception as e:
+        print(f"선적 시트 로드 에러: {e}")
+        return pd.DataFrame()
+
+
 def load_master_from_file(file_obj) -> pd.DataFrame:
     """CSV / Excel 파일로 마스터 DB 로드 (로컬 테스트·대체용)"""
     name = getattr(file_obj, "name", "")

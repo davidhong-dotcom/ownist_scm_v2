@@ -10,7 +10,7 @@ import numpy as np
 from datetime import date, timedelta
 from data.processor import safe_divide, _calc_expiry
 
-def render_sop_simulation(master_df: pd.DataFrame, inventory_df: pd.DataFrame, shipping_df: pd.DataFrame, today: date):
+def render_sop_simulation(master_df: pd.DataFrame, inventory_df: pd.DataFrame, shipping_df: pd.DataFrame, po_df: pd.DataFrame, today: date):
     st.markdown('<div class="sec-title">🔮 S&OP 생산량 시뮬레이션</div>', unsafe_allow_html=True)
     
     if master_df is None or inventory_df is None or shipping_df is None or shipping_df.empty:
@@ -58,15 +58,26 @@ def render_sop_simulation(master_df: pd.DataFrame, inventory_df: pd.DataFrame, s
     # 목표 재고 = 목표 안전재고 일수 * 일평균출고량
     df["목표재고량"] = df["일평균출고량"] * target_days
     
-    # 필요 생산량 = 목표재고량 - 현재고 + (리드타임 동안의 예상 출고량)
+    # 발주/입고 예정 수량 산출 (완료되지 않은 건만)
+    if po_df is not None and not po_df.empty:
+        # '입고완료' 텍스트가 포함되지 않은 항목만 '예정 수량'으로 간주
+        pending_po = po_df[~po_df["입고상태"].str.replace(" ", "").str.contains("입고완료", na=False)]
+        pending_agg = pending_po.groupby("상품코드", as_index=False)["발주수량"].sum().rename(columns={"발주수량": "입고예정수량"})
+        df = df.merge(pending_agg, on="상품코드", how="left")
+    else:
+        df["입고예정수량"] = 0
+        
+    df["입고예정수량"] = df.get("입고예정수량", 0).fillna(0)
+    
+    # 필요 생산량 = 목표재고량 - (현재고 + 입고예정수량) + (리드타임 동안의 예상 출고량)
     # 리드타임 동안의 출고량 반영 (발주 시점부터 입고 시점까지 재고가 추가로 소진됨)
-    df["필요생산량"] = df["목표재고량"] - df["현재고"] + (df["일평균출고량"] * lead_time)
+    df["필요생산량"] = df["목표재고량"] - (df["현재고"] + df["입고예정수량"]) + (df["일평균출고량"] * lead_time)
     
     # 필요생산량이 0보다 작으면 0으로 처리 (재고 충분)
     df["필요생산량"] = df["필요생산량"].apply(lambda x: x if x > 0 else 0)
     
     # ── 표시용 테이블 ──
-    cols = ["상품구분", "상품코드", "상품명", "현재고", "일평균출고량", "현재_사용가능일", "예상소진일", "목표재고량", "필요생산량"]
+    cols = ["상품구분", "상품코드", "상품명", "현재고", "입고예정수량", "일평균출고량", "현재_사용가능일", "예상소진일", "목표재고량", "필요생산량"]
     if "품목구분" in df.columns:
         cols[0] = "품목구분"
     elif "구분" in df.columns:
@@ -75,7 +86,7 @@ def render_sop_simulation(master_df: pd.DataFrame, inventory_df: pd.DataFrame, s
     display = df[cols].copy()
     
     # 소수점 반올림 및 포맷팅
-    num_cols = ["현재고", "일평균출고량", "목표재고량", "필요생산량"]
+    num_cols = ["현재고", "입고예정수량", "일평균출고량", "목표재고량", "필요생산량"]
     for c in num_cols:
         display[c] = display[c].apply(lambda x: np.ceil(x) if isinstance(x, (int, float)) else x)
     

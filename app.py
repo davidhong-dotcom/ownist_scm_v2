@@ -33,6 +33,7 @@ from data.processor import (
     parse_daily_shipping_file,
     parse_multi_channel_file,
     load_code_mapping_from_gsheet,
+    load_po_from_gsheet,
     translate_product_codes,
     filter_shipping_by_date,
     aggregate_shipping_daily,
@@ -117,6 +118,7 @@ for _k, _v in {
     "mapping_df": None,
     "inventory_df": None,
     "shipping_df": None, # 이제 Supabase에서 조회한 전체 데이터 담음
+    "po_df": None, # 발주 데이터 담음
 }.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
@@ -126,13 +128,29 @@ for _k, _v in {
 # ════════════════════════════════════════════════
 DEFAULT_GSHEET_URL = "https://docs.google.com/spreadsheets/d/1NxEiNIh0UK0XHfDiqntcG4tdJai_emkyEz-rTwfr4q4/edit?gid=1703000362#gid=1703000362"
 DEFAULT_MAPPING_URL = "https://docs.google.com/spreadsheets/d/1NxEiNIh0UK0XHfDiqntcG4tdJai_emkyEz-rTwfr4q4/edit?gid=275066073#gid=275066073"
+DEFAULT_PO_URL = "https://docs.google.com/spreadsheets/d/1NxEiNIh0UK0XHfDiqntcG4tdJai_emkyEz-rTwfr4q4/edit?gid=1362766974#gid=1362766974"
+
+if st.session_state.get("po_url") is None:
+    st.session_state["po_url"] = DEFAULT_PO_URL
+if st.session_state.get("transfer_url") is None:
+    st.session_state["transfer_url"] = ""
 
 if st.session_state["master_df"] is None:
     try:
         st.session_state["master_df"] = load_master_from_gsheet(DEFAULT_GSHEET_URL)
         st.session_state["mapping_df"] = load_code_mapping_from_gsheet(DEFAULT_MAPPING_URL)
+        
+        if st.session_state["po_url"]:
+            st.session_state["po_df"] = load_po_from_gsheet(st.session_state["po_url"], "발주")
     except Exception as e:
         st.error(f"마스터 DB 자동 로드 실패: {e}")
+
+if st.session_state.get("transfer_df") is None:
+    try:
+        from data.supabase_client import fetch_transfers
+        st.session_state["transfer_df"] = fetch_transfers()
+    except Exception as e:
+        pass
 
 if st.session_state["inventory_df"] is None:
     try:
@@ -152,7 +170,7 @@ with st.sidebar:
     # 탭 대신 메뉴 방식으로 구현
     menu = st.radio(
         "메뉴 선택",
-        ["📊 재고 대시보드", "📊 채널별 재고 대시보드", "🚚 일자별 출고현황", "🔮 S&OP 시뮬레이션", "⚙️ 데이터 설정"],
+        ["📊 재고 대시보드", "📊 채널별 재고 대시보드", "🚚 일자별 출고현황", "🔮 S&OP 시뮬레이션", "📦 발주 및 입고현황", "🚢 선적 및 이동 관리", "🌐 다단계 예상재고", "⚙️ 데이터 설정"],
         label_visibility="collapsed"
     )
     
@@ -187,25 +205,48 @@ if menu == "⚙️ 데이터 설정":
     # 마스터 DB는 채널과 무관하게 공통 적용
     st.markdown("### ① 공통 마스터 DB (Google Sheets)")
     gsheet_url = st.text_input(
-        "Google Sheets URL (수동 갱신용)",
+        "마스터 DB URL",
         value=DEFAULT_GSHEET_URL,
         placeholder="https://docs.google.com/spreadsheets/d/...",
         help="편집 URL 또는 export CSV URL 모두 가능합니다. 시트명 'DB'가 기준입니다.",
     )
-    if st.button("📥 마스터 DB 새로고침", use_container_width=False):
+    
+    st.markdown("### 📦 발주 DB (Google Sheets)")
+    
+    po_gsheet_url = st.text_input(
+        "발주 DB URL",
+        value=st.session_state.get("po_url", DEFAULT_PO_URL),
+        placeholder="발주 시트 URL (gid 포함)",
+    )
+    
+    if st.button("📥 구글 시트 데이터 새로고침 (마스터 & 발주)", use_container_width=False):
         if not gsheet_url.strip():
-            render_error("Google Sheets URL을 입력해 주세요.")
+            render_error("마스터 DB URL을 입력해 주세요.")
         else:
-            with st.spinner("마스터 DB 수동 로드 중..."):
+            with st.spinner("구글 시트 데이터 로드 중..."):
                 try:
                     import data.processor
                     data.processor.load_master_from_gsheet.clear() # 캐시 초기화
                     data.processor.load_code_mapping_from_gsheet.clear() # 매핑 시트 캐시 초기화
+                    data.processor.load_po_from_gsheet.clear() # 발주 시트 캐시 초기화
+                    if hasattr(data.processor, 'load_transfer_from_gsheet'):
+                        data.processor.load_transfer_from_gsheet.clear() # 선적 시트 캐시 초기화
+                    
                     st.session_state["master_df"] = load_master_from_gsheet(gsheet_url.strip())
                     st.session_state["mapping_df"] = load_code_mapping_from_gsheet(DEFAULT_MAPPING_URL)
-                    render_success(f"마스터 DB 새로고침 완료 — {len(st.session_state['master_df'])}개 상품")
+                    
+                    if po_gsheet_url.strip():
+                        st.session_state["po_url"] = po_gsheet_url.strip()
+                        st.session_state["po_df"] = load_po_from_gsheet(po_gsheet_url.strip(), "발주")
+                    else:
+                        st.session_state["po_df"] = pd.DataFrame()
+                        
+                    from data.supabase_client import fetch_transfers
+                    st.session_state["transfer_df"] = fetch_transfers()
+                        
+                    render_success(f"새로고침 완료 — 마스터 {len(st.session_state['master_df'])}개, 발주 {len(st.session_state.get('po_df', []))}개")
                 except Exception as e:
-                    render_error(f"마스터 DB 로드 실패: {e}")
+                    render_error(f"구글 시트 로드 실패: {e}")
 
     st.divider()
     st.markdown("### ② 채널별 데이터 업로드 (Supabase 연동)")
@@ -225,7 +266,7 @@ if menu == "⚙️ 데이터 설정":
     else:
         global_start_date = global_end_date = global_date_range
     
-    channels = ["CK로지스 (WMS)", "도착보장", "롯데면세점", "신라면세점", "신세계면세점", "현대면세점"]
+    channels = ["CK로지스 (WMS)", "도착보장", "롯데면세점", "신라면세점", "신세계면세점", "현대면세점", "US 창고"]
     upload_tabs = st.tabs(channels)
     
     with upload_tabs[0]:
@@ -403,9 +444,12 @@ if st.session_state["shipping_df"].empty:
 # ════════════════════════════════════════════════
 st.markdown('<div class="sticky-header"></div>', unsafe_allow_html=True)
 with st.container():
-    # 필터 영역 디자인 (5열로 확장)
-    fc1, fc2, fc_ch, fc3, fc4 = st.columns([1, 1, 1, 1, 1])
+    # 필터 영역 디자인
+    fc_reg, fc1, fc2, fc_ch, fc3, fc4 = st.columns([1, 1, 1, 1, 1, 1])
     
+    # 0) 지역 필터
+    sel_region = fc_reg.selectbox("지역(국가)", ["전체", "한국", "미국"], key="fil_지역_공통")
+
     # 1) 구분 필터
     구분_opts = ["전체"] + sorted(st.session_state["master_df"]["구분"].dropna().unique().tolist())
     sel_구분 = fc1.selectbox("구분", 구분_opts, key="fil_구분_공통")
@@ -417,7 +461,19 @@ with st.container():
     # 3) 채널 필터
     inv_ch = st.session_state["inventory_df"]["채널"].unique().tolist() if not st.session_state["inventory_df"].empty else []
     ship_ch = st.session_state["shipping_df"]["채널"].unique().tolist() if not st.session_state["shipping_df"].empty else []
-    channel_opts = ["전체"] + sorted(list(set(inv_ch + ship_ch)))
+    
+    # 지역별 채널 필터링 적용
+    all_channels_available = list(set(inv_ch + ship_ch))
+    kr_ch_list = [ch for ch in all_channels_available if ch != "US 창고"]
+    us_ch_list = [ch for ch in all_channels_available if ch == "US 창고"]
+    
+    if sel_region == "한국":
+        channel_opts = ["전체"] + sorted(kr_ch_list)
+    elif sel_region == "미국":
+        channel_opts = ["전체"] + sorted(us_ch_list)
+    else:
+        channel_opts = ["전체"] + sorted(all_channels_available)
+        
     sel_channel = fc_ch.selectbox("채널", channel_opts, key="fil_채널_공통")
     
     # 4) 날짜 필터 (출고현황 등에 영향)
@@ -429,6 +485,7 @@ with st.container():
 
 # ════════════════════════════════════════════════
 # 데이터 필터링 적용
+
 # ════════════════════════════════════════════════
 # 1. 마스터 DB 필터링
 filtered_master = st.session_state["master_df"].copy()
@@ -437,9 +494,17 @@ if sel_구분 != "전체":
 if sel_품목 != "전체":
     filtered_master = filtered_master[filtered_master["품목구분"] == sel_품목]
 
-# 2. 인벤토리/출고 데이터 채널 필터링
+# 2. 인벤토리/출고 데이터 채널/지역 필터링
 filtered_inv = st.session_state["inventory_df"].copy()
 filtered_ship = st.session_state["shipping_df"].copy()
+
+# 지역 필터 선 적용
+if sel_region == "한국":
+    if "채널" in filtered_inv.columns: filtered_inv = filtered_inv[filtered_inv["채널"] != "US 창고"]
+    if "채널" in filtered_ship.columns: filtered_ship = filtered_ship[filtered_ship["채널"] != "US 창고"]
+elif sel_region == "미국":
+    if "채널" in filtered_inv.columns: filtered_inv = filtered_inv[filtered_inv["채널"] == "US 창고"]
+    if "채널" in filtered_ship.columns: filtered_ship = filtered_ship[filtered_ship["채널"] == "US 창고"]
 
 if sel_channel != "전체":
     if "채널" in filtered_inv.columns:
@@ -496,7 +561,7 @@ elif menu == "📊 채널별 재고 대시보드":
 
         st.divider()
 
-        channels_list = ["CK로지스", "도착보장", "롯데면세점", "신라면세점", "신세계면세점", "현대면세점"]
+        channels_list = ["CK로지스", "도착보장", "롯데면세점", "신라면세점", "신세계면세점", "현대면세점", "US 창고"]
         tabs = st.tabs(channels_list)
 
         for idx, ch_name in enumerate(channels_list):
@@ -569,6 +634,42 @@ elif menu == "🚚 일자별 출고현황":
 
 
 # ════════════════════════════════════════════════
+# 메뉴: 📦 발주 및 입고현황
+# ════════════════════════════════════════════════
+elif menu == "📦 발주 및 입고현황":
+    st.markdown('<div class="sec-title">📦 발주 및 입고현황 (PO & Inbound)</div>', unsafe_allow_html=True)
+    
+    po_df = st.session_state.get("po_df")
+    if po_df is None or po_df.empty:
+        st.info("데이터 설정 메뉴에서 Google Sheets에 '발주' 시트를 생성하고 데이터를 불러와주세요.\n\n필수 컬럼: 외주처, 상품코드, 상품명, 발주수량, 납기예정일, 입고상태")
+    else:
+        # 필터링 적용 (구분, 품목구분 필터)
+        disp_po = po_df[po_df["상품코드"].isin(filtered_master["상품코드"])].copy()
+        
+        # 상품명 매핑(선택적) - 마스터 기준
+        disp_po = disp_po.merge(filtered_master[["상품코드", "상품명"]], on="상품코드", how="left", suffixes=("_po", "_master"))
+        disp_po["상품명"] = disp_po["상품명_master"].fillna(disp_po["상품명_po"])
+        
+        from ui.po_calendar import render_po_calendar
+        render_po_calendar(disp_po)
+        
+        st.divider()
+        
+        col_summary1, col_summary2 = st.columns(2)
+        with col_summary1:
+            total_qty = disp_po["발주수량"].sum()
+            st.metric("총 발주/입고예정 수량", f"{total_qty:,.0f} EA")
+        with col_summary2:
+            pending_qty = disp_po[disp_po["입고상태"] != "완료"]["발주수량"].sum()
+            st.metric("미완료 수량", f"{pending_qty:,.0f} EA")
+            
+        with st.expander("📝 발주 및 입고 상세 데이터 테이블 보기", expanded=True):
+            st.dataframe(
+                disp_po[["외주처", "상품명", "발주수량", "납기예정일", "입고상태"]].style.format({"발주수량": "{:,.0f}"}),
+                use_container_width=True
+            )
+
+# ════════════════════════════════════════════════
 # 메뉴: 🔮 S&OP 시뮬레이션
 # ════════════════════════════════════════════════
 elif menu == "🔮 S&OP 시뮬레이션":
@@ -577,8 +678,37 @@ elif menu == "🔮 S&OP 시뮬레이션":
             filtered_master,
             st.session_state["inventory_df"],
             st.session_state["shipping_df"],
+            st.session_state.get("po_df"),
             today
         )
     except Exception as e:
         render_error(f"S&OP 시뮬레이션 오류: {e}")
+        st.exception(e)
+
+# ════════════════════════════════════════════════
+# 메뉴: 🌐 다단계 예상재고
+# ════════════════════════════════════════════════
+elif menu == "🌐 다단계 예상재고":
+    from ui.projected_inventory import render_projected_inventory
+    try:
+        render_projected_inventory(
+            filtered_master,
+            st.session_state["inventory_df"],
+            st.session_state["shipping_df"],
+            st.session_state.get("po_df"),
+            st.session_state.get("transfer_df")
+        )
+    except Exception as e:
+        render_error(f"예상재고 시뮬레이션 오류: {e}")
+        st.exception(e)
+
+# ════════════════════════════════════════════════
+# 메뉴: 🚢 선적 및 이동 관리
+# ════════════════════════════════════════════════
+elif menu == "🚢 선적 및 이동 관리":
+    from ui.transfer_manager import render_transfer_manager
+    try:
+        render_transfer_manager(filtered_master)
+    except Exception as e:
+        render_error(f"선적 관리 오류: {e}")
         st.exception(e)

@@ -331,3 +331,60 @@ def fetch_inventory_data() -> pd.DataFrame:
     
     df["현재고"] = df["현재고"].astype(float)
     return df
+
+# ────────────────────────────────────────────────
+# 선적(이동) 데이터 처리 (Transfers)
+# ────────────────────────────────────────────────
+
+def fetch_transfers() -> pd.DataFrame:
+    """
+    Supabase에서 선적/이동 내역을 가져옵니다.
+    """
+    supabase = get_supabase()
+    response = supabase.table("transfers").select("*").order("created_at", desc=True).execute()
+    
+    if not response.data:
+        return pd.DataFrame(columns=["id", "상품코드", "출발지", "도착지", "선적수량", "선적일", "하차예정일", "상태", "생성일"])
+        
+    df = pd.DataFrame(response.data)
+    
+    # 컬럼명 매핑 (앱 내에서 구글 시트 기반 컬럼과 호환되도록)
+    df = df.rename(columns={
+        "product_code": "상품코드",
+        "source": "출발지",
+        "destination": "도착지",
+        "quantity": "선적수량",
+        "departure_date": "선적일",
+        "arrival_date": "하차예정일",
+        "status": "상태",
+        "created_at": "생성일"
+    })
+    
+    df["선적일"] = pd.to_datetime(df["선적일"], errors="coerce").dt.date
+    df["하차예정일"] = pd.to_datetime(df["하차예정일"], errors="coerce").dt.date
+    df["선적수량"] = pd.to_numeric(df["선적수량"], errors="coerce").fillna(0)
+    
+    return df
+
+def insert_transfer(product_code: str, source: str, destination: str, quantity: float, departure_date: str, arrival_date: str):
+    """
+    새로운 선적/이동 지시를 Supabase에 저장합니다.
+    """
+    supabase = get_supabase()
+    data = {
+        "product_code": product_code,
+        "source": source,
+        "destination": destination,
+        "quantity": quantity,
+        "departure_date": departure_date,
+        "arrival_date": arrival_date,
+        "status": "이동중"
+    }
+    supabase.table("transfers").insert(data).execute()
+
+def update_transfer_status(transfer_id: str, status: str):
+    """
+    특정 선적의 상태를 업데이트합니다 (예: '이동중' -> '입고완료').
+    """
+    supabase = get_supabase()
+    supabase.table("transfers").update({"status": status}).eq("id", transfer_id).execute()
