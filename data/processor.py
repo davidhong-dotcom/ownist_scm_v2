@@ -626,6 +626,20 @@ def aggregate_shipping_daily(df: pd.DataFrame) -> pd.DataFrame:
           .reset_index(drop=True)
     )
 
+def aggregate_shipping_monthly(df: pd.DataFrame) -> pd.DataFrame:
+    """월별 × 상품코드별 출고수량 집계 (출고현황 탭용 피벗 원본)"""
+    # 출고일자를 월(YYYY-MM)로 변환
+    df_copy = df.copy()
+    # 출고일자가 문자열이든 datetime이든 'YYYY-MM' 형식으로 추출
+    df_copy["출고월"] = pd.to_datetime(df_copy["출고일자"]).dt.strftime("%Y-%m")
+    
+    return (
+        df_copy.groupby(["출고월", "상품코드"], as_index=False)["출고수량"]
+          .sum()
+          .sort_values(["출고월", "상품코드"])
+          .reset_index(drop=True)
+    )
+
 
 def aggregate_shipping_by_product(df: pd.DataFrame) -> pd.DataFrame:
     """상품코드 및 채널별 총 출고수량 집계"""

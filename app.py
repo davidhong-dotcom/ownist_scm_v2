@@ -44,6 +44,7 @@ from data.processor import (
     translate_product_codes,
     filter_shipping_by_date,
     aggregate_shipping_daily,
+    aggregate_shipping_monthly,
     compute_metrics,
     get_today_kst,
 )
@@ -177,7 +178,7 @@ with st.sidebar:
     # 탭 대신 메뉴 방식으로 구현
     menu = st.radio(
         "메뉴 선택",
-        ["📊 재고 대시보드", "📊 채널별 재고 대시보드", "🚚 일자별 출고현황", "🔮 S&OP 시뮬레이션", "📦 발주 및 입고현황", "🚢 선적 및 이동 관리", "🌐 다단계 예상재고", "⚙️ 데이터 설정"],
+        ["📊 재고 대시보드", "📊 채널별 재고 대시보드", "🚚 기간별 출고현황", "🔮 S&OP 시뮬레이션", "📦 발주 및 입고현황", "🚢 선적 및 이동 관리", "🌐 다단계 예상재고", "⚙️ 데이터 설정"],
         label_visibility="collapsed"
     )
     
@@ -615,25 +616,68 @@ elif menu == "📊 채널별 재고 대시보드":
 
 
 # ════════════════════════════════════════════════
-# 메뉴: 🚚 일자별 출고현황
+# 메뉴: 🚚 기간별 출고현황
 # ════════════════════════════════════════════════
-elif menu == "🚚 일자별 출고현황":
+elif menu == "🚚 기간별 출고현황":
     try:
+        # 1. 상세 검색 필터 (품목구분 -> 상품)
+        col1, col2 = st.columns(2)
+        with col1:
+            categories = sorted(filtered_master["품목구분"].dropna().unique().tolist())
+            selected_category = st.multiselect("📂 품목구분 다중 선택 (비워두면 전체)", categories, key="shipping_cat")
+        
+        with col2:
+            if selected_category:
+                prod_list = filtered_master[filtered_master["품목구분"].isin(selected_category)]
+            else:
+                prod_list = filtered_master
+            
+            # [상품코드] 상품명 형태로 표시
+            product_opts = sorted((prod_list["상품코드"].astype(str) + " - " + prod_list["상품명"].astype(str)).dropna().unique().tolist())
+            selected_product = st.multiselect("📦 상품 다중 선택 (비워두면 전체)", product_opts, key="shipping_prod")
+
         filtered_shipping = filter_shipping_by_date(
             st.session_state["shipping_df"], start_date, end_date
         )
+        
+        # 일자별 / 월별 데이터 집계
         daily = aggregate_shipping_daily(filtered_shipping)
+        monthly = aggregate_shipping_monthly(filtered_shipping)
 
         # 필터링된 마스터 데이터에 존재하는 상품코드만 남기기 (상품구분 필터 적용)
         daily = daily[daily["상품코드"].isin(filtered_master["상품코드"])]
+        monthly = monthly[monthly["상품코드"].isin(filtered_master["상품코드"])]
 
         # 상품명 조인
         daily = daily.merge(
             filtered_master[["상품코드", "상품명"]],
             on="상품코드", how="left",
         )
+        monthly = monthly.merge(
+            filtered_master[["상품코드", "상품명"]],
+            on="상품코드", how="left",
+        )
+        
+        # 검색어 필터링 적용
+        if selected_product:
+            # 상품이 선택된 경우, 선택된 상품코드들로 필터링
+            selected_codes = [p.split(" - ")[0] for p in selected_product]
+            daily = daily[daily["상품코드"].astype(str).isin(selected_codes)]
+            monthly = monthly[monthly["상품코드"].astype(str).isin(selected_codes)]
+        elif selected_category:
+            # 상품은 선택 안 했지만, 품목구분이 선택된 경우
+            cat_codes = prod_list["상품코드"].tolist()
+            daily = daily[daily["상품코드"].isin(cat_codes)]
+            monthly = monthly[monthly["상품코드"].isin(cat_codes)]
 
-        render_shipping_table(daily, start_date, end_date)
+        # 탭 분리
+        tab1, tab2 = st.tabs(["일자별 출고현황", "월별 출고현황"])
+        
+        with tab1:
+            render_shipping_table(daily, start_date, end_date, period_type="daily")
+            
+        with tab2:
+            render_shipping_table(monthly, start_date, end_date, period_type="monthly")
 
     except Exception as e:
         render_error(f"출고현황 조회 오류: {e}")

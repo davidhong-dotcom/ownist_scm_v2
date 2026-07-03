@@ -294,11 +294,14 @@ def render_metrics_table(metrics_df: pd.DataFrame, key: str = None):
 
 
 # ════════════════════════════════════════════════
-# 일자별 출고현황 테이블
+# 기간별(일자별/월별) 출고현황 테이블
 # ════════════════════════════════════════════════
-def render_shipping_table(daily_df: pd.DataFrame, start_date, end_date):
+def render_shipping_table(daily_df: pd.DataFrame, start_date, end_date, period_type="daily"):
+    title = "일자별" if period_type == "daily" else "월별"
+    date_col = "출고일자" if period_type == "daily" else "출고월"
+    
     st.markdown(
-        f'<div class="sec-title">🚚 일자별 출고현황 ({start_date} ~ {end_date})</div>',
+        f'<div class="sec-title">🚚 {title} 출고현황 ({start_date} ~ {end_date})</div>',
         unsafe_allow_html=True,
     )
 
@@ -306,11 +309,11 @@ def render_shipping_table(daily_df: pd.DataFrame, start_date, end_date):
         st.info("선택한 기간에 출고 데이터가 없습니다.")
         return
 
-    # 피벗: 행=상품코드+상품명, 열=날짜
+    # 피벗: 행=상품코드+상품명, 열=날짜/월
     pivot_index = ["상품코드", "상품명"] if "상품명" in daily_df.columns else ["상품코드"]
     pivot = daily_df.pivot_table(
         index=pivot_index,
-        columns="출고일자",
+        columns=date_col,
         values="출고수량",
         aggfunc="sum",
         fill_value=0,
@@ -318,15 +321,20 @@ def render_shipping_table(daily_df: pd.DataFrame, start_date, end_date):
     pivot.columns = [str(c) for c in pivot.columns]
     pivot["합계"] = pivot.sum(axis=1)
     pivot = pivot.sort_values("합계", ascending=False).reset_index()
+    # 숫자형(수량) 컬럼에 천단위 콤마 포맷 적용
+    numeric_cols = [col for col in pivot.columns if col not in pivot_index]
+    format_dict = {col: "{:,.0f}" for col in numeric_cols}
+    styled_pivot = pivot.style.format(format_dict)
 
-    st.dataframe(pivot, use_container_width=True, height=460)
+    st.dataframe(styled_pivot, use_container_width=True, height=460)
 
     csv = pivot.to_csv(index=False, encoding="utf-8-sig")
     st.download_button(
         "⬇️ 출고현황 CSV 다운로드",
         data=csv,
-        file_name=f"출고현황_{start_date}_{end_date}.csv",
+        file_name=f"출고현황_{period_type}_{start_date}_{end_date}.csv",
         mime="text/csv",
+        key=f"download_shipping_{period_type}"
     )
 
 
