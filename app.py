@@ -303,16 +303,27 @@ if menu == "⚙️ 데이터 설정":
         with c2:
             st.markdown("#### 출고완료 내역")
             shipping_file = st.file_uploader(
-                "일자별 출고현황 (.xls, .xlsx)",
-                type=["xls", "xlsx"],
+                "기간별 출고완료 내역 (.xlsx)",
+                type=["xlsx"],
                 key="ship_upload_domestic",
-                help="일자별 출고현황_YYYYMMDD.xls 파일을 올려주세요.",
+                help="기간별 출고완료 내역_(주)오니스트_...xlsx 파일을 올려주세요.",
             )
+            
             if shipping_file:
                 if st.button("🚀 출고 데이터 Supabase 전송", key="btn_ship_dom", use_container_width=True):
                     with st.spinner("파일 처리 및 전송 중..."):
                         try:
-                            new_shipping_df = parse_daily_shipping_file(shipping_file)
+                            from datetime import timedelta
+                            
+                            today = get_today_kst()
+                            today_str = today.strftime("%Y%m%d")
+                            yesterday_str = (today - timedelta(days=1)).strftime("%Y%m%d")
+                            dates_in_name = re.findall(r"\d{8}", shipping_file.name)
+                            
+                            password_candidates = [today_str, yesterday_str] + dates_in_name
+                            password_candidates = list(dict.fromkeys(password_candidates)) # 중복 제거
+                            
+                            new_shipping_df = parse_ownist_shipping_file(shipping_file, password=password_candidates)
                             upsert_count, filtered_df = upsert_ownist_shipping(new_shipping_df, channel="CK로지스")
                             st.session_state["shipping_df"] = None  # 캐시 초기화
                             

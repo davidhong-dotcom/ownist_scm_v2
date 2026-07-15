@@ -342,20 +342,33 @@ def parse_inventory_file(file_obj) -> pd.DataFrame:
 # ────────────────────────────────────────────────
 # 비밀번호 보호 xlsx 복호화 헬퍼
 # ────────────────────────────────────────────────
-def decrypt_xlsx(file_obj, password: str) -> bytes:
+def decrypt_xlsx(file_obj, password) -> bytes:
     """
     msoffcrypto-tool을 사용해 비밀번호가 걸린 xlsx 파일을 복호화.
+    password는 단일 문자열이거나 시도할 비밀번호 문자열들의 리스트일 수 있습니다.
     반환: 복호화된 xlsx 파일의 bytes
     """
     import msoffcrypto
 
     content = file_obj.read() if hasattr(file_obj, "read") else open(file_obj, "rb").read()
-    encrypted = io.BytesIO(content)
-    office_file = msoffcrypto.OfficeFile(encrypted)
-    office_file.load_key(password=password)
-    decrypted = io.BytesIO()
-    office_file.decrypt(decrypted)
-    return decrypted.getvalue()
+    
+    passwords = [password] if isinstance(password, str) else password
+    
+    last_err = None
+    for pwd in passwords:
+        try:
+            encrypted = io.BytesIO(content)
+            office_file = msoffcrypto.OfficeFile(encrypted)
+            office_file.load_key(password=pwd)
+            decrypted = io.BytesIO()
+            office_file.decrypt(decrypted)
+            return decrypted.getvalue()
+        except Exception as e:
+            last_err = e
+            continue
+            
+    raise Exception(f"복호화 실패. 시도한 비밀번호가 모두 틀렸습니다. (마지막 에러: {last_err})")
+
 
 
 # ────────────────────────────────────────────────
@@ -369,7 +382,7 @@ def decrypt_xlsx(file_obj, password: str) -> bytes:
 #   AC(idx 28): 출고량
 #   AD(idx 29): 금액 (동일 주문번호끼리 합산 → 주문금액합계)
 # ────────────────────────────────────────────────
-def parse_ownist_shipping_file(file_obj, password: str) -> pd.DataFrame:
+def parse_ownist_shipping_file(file_obj, password) -> pd.DataFrame:
     """
     기간별 출고완료 내역_(주)오니스트_YYYYMMDD_YYYYMMDD.xlsx 파싱.
 
@@ -694,6 +707,11 @@ def compute_metrics(
     recent     = filter_shipping_by_date(shipping_df, start_date, end_date)
     recent_agg = aggregate_shipping_by_product(recent)
 
+    # 당월 출고 집계
+    curr_month_start = today.replace(day=1)
+    curr_ship = filter_shipping_by_date(shipping_df, curr_month_start, today)
+    curr_agg = aggregate_shipping_by_product(curr_ship).rename(columns={"총출고수량": "당월 출고량"})
+
     # 마스터 기준 병합
     df = master_df.merge(inventory_df, on="상품코드", how="left")
     
@@ -703,8 +721,17 @@ def compute_metrics(
     else:
         df = df.merge(recent_agg, on="상품코드", how="left")
         
+    if "채널" in df.columns and "채널" in curr_agg.columns:
+        df = df.merge(curr_agg[["상품코드", "채널", "당월 출고량"]], on=["상품코드", "채널"], how="left")
+    else:
+        if "당월 출고량" in curr_agg.columns:
+            df = df.merge(curr_agg[["상품코드", "당월 출고량"]], on="상품코드", how="left")
+        else:
+            df["당월 출고량"] = 0.0
+        
     df["현재고"]    = df["현재고"].fillna(0)
     df["총출고수량"] = df["총출고수량"].fillna(0)
+    df["당월 출고량"] = df["당월 출고량"].fillna(0)
 
     # 채널 결측치 처리 (마스터에만 있고 재고/출고 내역이 없는 상품)
     if "채널" in df.columns:
@@ -731,7 +758,7 @@ def compute_metrics(
         
     cols.extend([
         "구분", "품목구분", "상품코드", "상품명",
-        "현재고",
+        "현재고", "당월 출고량",
         "3개월 총출고량", "3개월 월평균 출고량", "3개월 일평균 출고량",
         "사용가능(월)", "사용가능(일)",
         "안전재고", "안전재고 미만",

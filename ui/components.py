@@ -254,19 +254,25 @@ def render_metrics_table(metrics_df: pd.DataFrame, key: str = None):
     display = metrics_df.copy()
 
     # 소수점 포맷
-    num_cols = [
-        "현재고", "3개월 총출고량", "3개월 월평균 출고량",
-        "3개월 일평균 출고량", "안전재고", "안전재고 미만",
-    ]
-    for col in num_cols:
+    num_cols_int = ["현재고", "당월 출고량", "3개월 총출고량", "안전재고"]
+    num_cols_float = ["3개월 월평균 출고량", "3개월 일평균 출고량", "안전재고 미만"]
+
+    for col in num_cols_int:
         if col in display.columns:
             display[col] = display[col].apply(
-                lambda v: f"{v:,.1f}" if isinstance(v, (int, float)) else v
+                lambda v: f"{int(v):,}" if isinstance(v, (int, float)) and not pd.isna(v) else v
             )
+            
+    for col in num_cols_float:
+        if col in display.columns:
+            display[col] = display[col].apply(
+                lambda v: f"{v:,.1f}" if isinstance(v, (int, float)) and not pd.isna(v) else v
+            )
+            
     for col in ["사용가능(월)", "사용가능(일)"]:
         if col in display.columns:
             display[col] = display[col].apply(
-                lambda v: f"{v:.1f}" if isinstance(v, (int, float)) else v
+                lambda v: f"{v:.1f}" if isinstance(v, (int, float)) and not pd.isna(v) else v
             )
 
     # 행 하이라이트
