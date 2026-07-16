@@ -23,7 +23,7 @@ def render_transfer_manager(master_df: pd.DataFrame):
             with col2:
                 departure_date = st.date_input("선적일 (출발일)", value=date.today())
                 arrival_date = st.date_input("하차예정일 (도착예정일)", value=date.today())
-                destination = st.text_input("도착지", value="US 창고")
+                destination = st.text_input("도착지", value="CGETC")
                 
             submitted = st.form_submit_button("선적 등록", use_container_width=True)
             if submitted:

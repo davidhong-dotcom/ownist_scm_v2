@@ -47,12 +47,12 @@ def render_projected_inventory(
     # 1. 일평균 출고량 계산
     velocity_df = calculate_daily_velocity(shipping_df, days=velocity_days)
     
-    # 한국(CK로지스) 및 미국(US 창고) 속도 추출
+    # 한국(CK로지스) 및 미국(CGETC) 속도 추출
     kr_velocity = 0.0
     us_velocity = 0.0
     
     v_kr = velocity_df[(velocity_df["상품코드"] == selected_code) & (velocity_df["채널"] == "CK로지스")]
-    v_us = velocity_df[(velocity_df["상품코드"] == selected_code) & (velocity_df["채널"] == "US 창고")]
+    v_us = velocity_df[(velocity_df["상품코드"] == selected_code) & (velocity_df["채널"] == "CGETC")]
     
     if not v_kr.empty: kr_velocity = v_kr["일평균출고량"].iloc[0]
     if not v_us.empty: us_velocity = v_us["일평균출고량"].iloc[0]
@@ -60,7 +60,7 @@ def render_projected_inventory(
     with col2:
         st.markdown(f"**현재 일평균 출고량 추세 (최근 {velocity_days}일 기준)**")
         st.markdown(f"- 🇰🇷 한국 (CK로지스): **하루 약 {kr_velocity:.1f}개** 출고")
-        st.markdown(f"- 🇺🇸 미국 (US 창고): **하루 약 {us_velocity:.1f}개** 출고")
+        st.markdown(f"- 🇺🇸 미국 (CGETC): **하루 약 {us_velocity:.1f}개** 출고")
 
     st.divider()
     
@@ -135,7 +135,7 @@ def render_projected_inventory(
     us_inv = 0
     if not inventory_df.empty:
         inv_kr = inventory_df[(inventory_df["상품코드"] == selected_code) & (inventory_df["채널"] == "CK로지스")]
-        inv_us = inventory_df[(inventory_df["상품코드"] == selected_code) & (inventory_df["채널"] == "US 창고")]
+        inv_us = inventory_df[(inventory_df["상품코드"] == selected_code) & (inventory_df["채널"] == "CGETC")]
         if not inv_kr.empty: kr_inv = inv_kr["현재고"].sum()
         if not inv_us.empty: us_inv = inv_us["현재고"].sum()
 
@@ -242,7 +242,7 @@ def render_projected_inventory(
         if not kr_oos_dates.empty:
             msg += f"- 한국(CK로지스): {kr_oos_dates.iloc[0]['날짜']} 부터 재고 소진 예상\n"
         if not us_oos_dates.empty:
-            msg += f"- 미국(US 창고): {us_oos_dates.iloc[0]['날짜']} 부터 재고 소진 예상\n"
+            msg += f"- 미국(CGETC): {us_oos_dates.iloc[0]['날짜']} 부터 재고 소진 예상\n"
         st.error(msg)
     else:
         st.success(f"✅ 향후 {sim_days}일 동안 한국과 미국 모두 품절 예상일이 없습니다.")

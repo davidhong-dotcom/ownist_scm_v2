@@ -268,7 +268,7 @@ def load_transfer_from_gsheet(spreadsheet_url: str, sheet_name: str = "선적") 
         df["출발지"] = df[source_col].str.strip() if source_col else "CK로지스"
         
         dest_col = _find_col(df, ["도착지", "입고처", "받는곳"], required=False)
-        df["도착지"] = df[dest_col].str.strip() if dest_col else "US 창고"
+        df["도착지"] = df[dest_col].str.strip() if dest_col else "CGETC"
         
         qty_col = _find_col(df, ["선적수량", "수량", "이동수량"], required=False)
         df["선적수량"] = clean_numeric(df[qty_col]) if qty_col else 0.0
@@ -510,6 +510,67 @@ def parse_shipping_file(file_obj) -> pd.DataFrame:
     df = df.dropna(subset=["출고일자"])
     df["출고일자"] = df["출고일자"].dt.date
     return df.query("상품코드 != '' and 상품코드 != 'nan'").reset_index(drop=True)
+
+# ────────────────────────────────────────────────
+# CGETC 파일 파싱 (재고, 출고 분리)
+# ────────────────────────────────────────────────
+def parse_cgetc_inventory(file_obj) -> pd.DataFrame:
+    """
+    CGETC_재고 파일 파싱
+    - Internal Reference -> 상품코드
+    - Quantity On Hand -> 현재고
+    """
+    df = _read_xls_or_xlsx(file_obj)
+    df.columns = df.columns.astype(str).str.strip()
+    
+    code_col = _find_col(df, ["Internal Reference", "Item number", "상품코드"])
+    qty_col = _find_col(df, ["Quantity On Hand", "현재고", "수량"])
+    
+    res = pd.DataFrame()
+    res["상품코드"] = df[code_col].astype(str).str.strip()
+    res["현재고"] = clean_numeric(df[qty_col])
+    
+    res = res.query("상품코드 != '' and 상품코드 != 'nan'").copy()
+    res["창고존"] = "CGETC"
+    return res
+
+def parse_cgetc_shipping(file_obj) -> pd.DataFrame:
+    """
+    CGETC_출고 파일 파싱
+    - Transaction Date. -> 출고일자
+    - Source Document -> 주문번호
+    - Item number -> 상품코드
+    - Out Qty -> 출고량
+    """
+    df = _read_xls_or_xlsx(file_obj)
+    df.columns = df.columns.astype(str).str.strip()
+    
+    date_col = _find_col(df, ["Transaction Date.", "Transaction Date", "일자", "일 자", "출고일자"])
+    code_col = _find_col(df, ["Item number", "상품코드", "Internal Reference"])
+    qty_col = _find_col(df, ["Out Qty", "출고량", "수불수량", "출고수량"])
+    order_num_col = _find_col(df, ["Source Document", "주문번호"], required=False)
+    order_company_col = _find_col(df, ["Destination Location", "주문처"], required=False)
+    name_col = _find_col(df, ["Item name", "상품명"], required=False)
+    
+    # 순수 출고량만 가져오기
+    df["Out Qty_Clean"] = clean_numeric(df[qty_col])
+    df = df[df["Out Qty_Clean"] > 0].copy()
+    
+    res = pd.DataFrame()
+    res["출고일자"] = pd.to_datetime(df[date_col], errors="coerce").dt.date
+    res["상품코드"] = df[code_col].astype(str).str.strip()
+    res["출고량"] = df["Out Qty_Clean"]
+    res["주문금액합계"] = 0.0
+    
+    if order_num_col:
+        res["주문번호"] = df[order_num_col].astype(str).str.strip()
+    if order_company_col:
+        res["주문사"] = df[order_company_col].astype(str).str.strip()
+    if name_col:
+        res["상품명"] = df[name_col].astype(str).str.strip()
+        
+    res = res.query("상품코드 != '' and 상품코드 != 'nan'").dropna(subset=["출고일자"]).copy()
+    return res
 
 
 # ────────────────────────────────────────────────

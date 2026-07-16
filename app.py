@@ -39,6 +39,8 @@ from data.processor import (
     parse_ownist_shipping_file,
     parse_daily_shipping_file,
     parse_multi_channel_file,
+    parse_cgetc_inventory,
+    parse_cgetc_shipping,
     load_code_mapping_from_gsheet,
     load_po_from_gsheet,
     translate_product_codes,
@@ -274,7 +276,7 @@ if menu == "⚙️ 데이터 설정":
     else:
         global_start_date = global_end_date = global_date_range
     
-    channels = ["CK로지스 (WMS)", "도착보장", "롯데면세점", "신라면세점", "신세계면세점", "현대면세점", "US 창고"]
+    channels = ["CK로지스 (WMS)", "도착보장", "롯데면세점", "신라면세점", "신세계면세점", "현대면세점", "CGETC"]
     upload_tabs = st.tabs(channels)
     
     with upload_tabs[0]:
@@ -340,14 +342,15 @@ if menu == "⚙️ 데이터 설정":
             st.markdown(f"**[{channel_name}] 마감 엑셀 업로드**")
             
             is_shilla = "신라" in channel_name
-            if is_shilla:
-                st.markdown("##### 📌 신라면세점은 재고 엑셀과 출고 엑셀을 각각 업로드해 주세요.")
+            is_cgetc = "CGETC" in channel_name
+            if is_shilla or is_cgetc:
+                st.markdown(f"##### 📌 {channel_name}은(는) 재고 엑셀과 출고 엑셀을 각각 업로드해 주세요.")
                 col1, col2 = st.columns(2)
                 with col1:
-                    shilla_inv = st.file_uploader(f"📦 재고 엑셀", type=["xls", "xlsx"], key=f"file_inv_{tab_idx}")
+                    separate_inv = st.file_uploader(f"📦 재고 엑셀", type=["xls", "xlsx"], key=f"file_inv_{tab_idx}")
                 with col2:
-                    shilla_ship = st.file_uploader(f"🚚 출고 엑셀", type=["xls", "xlsx"], key=f"file_ship_{tab_idx}")
-                files = [f for f in [shilla_inv, shilla_ship] if f is not None]
+                    separate_ship = st.file_uploader(f"🚚 출고 엑셀", type=["xls", "xlsx"], key=f"file_ship_{tab_idx}")
+                files = [f for f in [separate_inv, separate_ship] if f is not None]
             else:
                 files = st.file_uploader(
                     f"{channel_name} 엑셀 파일 (.xls / .xlsx)",
@@ -376,10 +379,16 @@ if menu == "⚙️ 데이터 설정":
                             
                             file_list = files if isinstance(files, list) else [files]
                             
-                            for f in file_list:
-                                ship_df, inv_df = parse_multi_channel_file(f, end_date, channel_name)
-                                all_ship_df = pd.concat([all_ship_df, ship_df])
-                                all_inv_df = pd.concat([all_inv_df, inv_df])
+                            if is_cgetc:
+                                if separate_inv:
+                                    all_inv_df = parse_cgetc_inventory(separate_inv)
+                                if separate_ship:
+                                    all_ship_df = parse_cgetc_shipping(separate_ship)
+                            else:
+                                for f in file_list:
+                                    ship_df, inv_df = parse_multi_channel_file(f, end_date, channel_name)
+                                    all_ship_df = pd.concat([all_ship_df, ship_df])
+                                    all_inv_df = pd.concat([all_inv_df, inv_df])
                             
                             # [코드 매핑 적용] 
                             if not all_ship_df.empty:
@@ -398,7 +407,7 @@ if menu == "⚙️ 데이터 설정":
                             filtered_df = pd.DataFrame()
                             if not all_ship_df.empty:
                                 ship_count, filtered_df = upsert_ownist_shipping(
-                                    all_ship_df, channel=channel_name
+                                    all_ship_df, channel=channel_name, is_cumulative=True
                                 )
                             
                             # 세션 초기화 및 재조회
@@ -483,8 +492,8 @@ with st.container():
     
     # 지역별 채널 필터링 적용
     all_channels_available = list(set(inv_ch + ship_ch))
-    kr_ch_list = [ch for ch in all_channels_available if ch != "US 창고"]
-    us_ch_list = [ch for ch in all_channels_available if ch == "US 창고"]
+    kr_ch_list = [ch for ch in all_channels_available if ch != "CGETC"]
+    us_ch_list = [ch for ch in all_channels_available if ch == "CGETC"]
     
     if sel_region == "한국":
         channel_opts = ["전체"] + sorted(kr_ch_list)
@@ -519,11 +528,11 @@ filtered_ship = st.session_state["shipping_df"].copy()
 
 # 지역 필터 선 적용
 if sel_region == "한국":
-    if "채널" in filtered_inv.columns: filtered_inv = filtered_inv[filtered_inv["채널"] != "US 창고"]
-    if "채널" in filtered_ship.columns: filtered_ship = filtered_ship[filtered_ship["채널"] != "US 창고"]
+    if "채널" in filtered_inv.columns: filtered_inv = filtered_inv[filtered_inv["채널"] != "CGETC"]
+    if "채널" in filtered_ship.columns: filtered_ship = filtered_ship[filtered_ship["채널"] != "CGETC"]
 elif sel_region == "미국":
-    if "채널" in filtered_inv.columns: filtered_inv = filtered_inv[filtered_inv["채널"] == "US 창고"]
-    if "채널" in filtered_ship.columns: filtered_ship = filtered_ship[filtered_ship["채널"] == "US 창고"]
+    if "채널" in filtered_inv.columns: filtered_inv = filtered_inv[filtered_inv["채널"] == "CGETC"]
+    if "채널" in filtered_ship.columns: filtered_ship = filtered_ship[filtered_ship["채널"] == "CGETC"]
 
 if sel_channel != "전체":
     if "채널" in filtered_inv.columns:
@@ -580,7 +589,7 @@ elif menu == "📊 채널별 재고 대시보드":
 
         st.divider()
 
-        channels_list = ["CK로지스", "도착보장", "롯데면세점", "신라면세점", "신세계면세점", "현대면세점", "US 창고"]
+        channels_list = ["CK로지스", "도착보장", "롯데면세점", "신라면세점", "신세계면세점", "현대면세점", "CGETC"]
         tabs = st.tabs(channels_list)
 
         for idx, ch_name in enumerate(channels_list):
