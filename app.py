@@ -180,7 +180,7 @@ with st.sidebar:
     # 탭 대신 메뉴 방식으로 구현
     menu = st.radio(
         "메뉴 선택",
-        ["📊 재고 대시보드", "📊 채널별 재고 대시보드", "🚚 기간별 출고현황", "🔮 S&OP 시뮬레이션", "📦 발주 및 입고현황", "🚢 선적 및 이동 관리", "🌐 다단계 예상재고", "⚙️ 데이터 설정"],
+        ["📊 재고 대시보드", "📊 채널별 재고 대시보드", "🚚 기간별 출고현황", "🔮 S&OP 시뮬레이션", "📦 발주 및 입고현황", "🚢 선적 및 이동 관리", "🌐 다단계 예상재고", "🗓️ 발주 예측 캘린더", "⚙️ 데이터 설정"],
         label_visibility="collapsed"
     )
     
@@ -772,6 +772,22 @@ elif menu == "🌐 다단계 예상재고":
         )
     except Exception as e:
         render_error(f"예상재고 시뮬레이션 오류: {e}")
+        st.exception(e)
+
+# ════════════════════════════════════════════════
+# 메뉴: 🗓️ 발주 예측 캘린더
+# ════════════════════════════════════════════════
+elif menu == "🗓️ 발주 예측 캘린더":
+    from ui.forecast_calendar import render_forecast_calendar
+    try:
+        render_forecast_calendar(
+            filtered_master,
+            st.session_state["inventory_df"],
+            st.session_state["shipping_df"],
+            st.session_state.get("po_df")
+        )
+    except Exception as e:
+        render_error(f"발주 예측 캘린더 오류: {e}")
         st.exception(e)
 
 # ════════════════════════════════════════════════
