@@ -344,7 +344,7 @@ def fetch_transfers() -> pd.DataFrame:
     response = supabase.table("transfers").select("*").order("created_at", desc=True).execute()
     
     if not response.data:
-        return pd.DataFrame(columns=["id", "상품코드", "출발지", "도착지", "선적수량", "선적일", "하차예정일", "상태", "생성일"])
+        return pd.DataFrame(columns=["id", "상품코드", "출발지", "도착지", "선적수량", "선적일", "하차예정일", "상태", "특이사항", "생성일"])
         
     df = pd.DataFrame(response.data)
     
@@ -357,6 +357,7 @@ def fetch_transfers() -> pd.DataFrame:
         "departure_date": "선적일",
         "arrival_date": "하차예정일",
         "status": "상태",
+        "remarks": "특이사항",
         "created_at": "생성일"
     })
     
@@ -366,7 +367,7 @@ def fetch_transfers() -> pd.DataFrame:
     
     return df
 
-def insert_transfer(product_code: str, source: str, destination: str, quantity: float, departure_date: str, arrival_date: str):
+def insert_transfer(product_code: str, source: str, destination: str, quantity: float, departure_date: str, arrival_date: str, remarks: str = ""):
     """
     새로운 선적/이동 지시를 Supabase에 저장합니다.
     """
@@ -378,7 +379,8 @@ def insert_transfer(product_code: str, source: str, destination: str, quantity: 
         "quantity": quantity,
         "departure_date": departure_date,
         "arrival_date": arrival_date,
-        "status": "이동중"
+        "status": "이동중",
+        "remarks": remarks
     }
     supabase.table("transfers").insert(data).execute()
 
@@ -388,3 +390,17 @@ def update_transfer_status(transfer_id: str, status: str):
     """
     supabase = get_supabase()
     supabase.table("transfers").update({"status": status}).eq("id", transfer_id).execute()
+
+def update_transfer_remarks(transfer_id: str, remarks: str):
+    """
+    특정 선적의 특이사항을 업데이트합니다.
+    """
+    supabase = get_supabase()
+    supabase.table("transfers").update({"remarks": remarks}).eq("id", transfer_id).execute()
+
+def update_transfer_details(transfer_id: str, updates: dict):
+    """
+    특정 선적의 상세 내역(출발지, 도착지, 수량, 날짜 등)을 업데이트합니다.
+    """
+    supabase = get_supabase()
+    supabase.table("transfers").update(updates).eq("id", transfer_id).execute()

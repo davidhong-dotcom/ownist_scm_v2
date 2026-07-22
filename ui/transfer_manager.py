@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import date
-from data.supabase_client import fetch_transfers, insert_transfer, update_transfer_status
+from data.supabase_client import fetch_transfers, insert_transfer, update_transfer_status, update_transfer_remarks, update_transfer_details
 from ui.components import render_success, render_error
 
 def render_transfer_manager(master_df: pd.DataFrame):
@@ -24,6 +24,7 @@ def render_transfer_manager(master_df: pd.DataFrame):
                 departure_date = st.date_input("선적일 (출발일)", value=date.today())
                 arrival_date = st.date_input("하차예정일 (도착예정일)", value=date.today())
                 destination = st.text_input("도착지", value="CGETC")
+                remarks = st.text_input("특이사항 (선택)", placeholder="예) FDA 승인 대기중")
                 
             submitted = st.form_submit_button("선적 등록", use_container_width=True)
             if submitted:
@@ -34,7 +35,8 @@ def render_transfer_manager(master_df: pd.DataFrame):
                         destination,
                         qty,
                         departure_date.strftime("%Y-%m-%d"),
-                        arrival_date.strftime("%Y-%m-%d")
+                        arrival_date.strftime("%Y-%m-%d"),
+                        remarks
                     )
                     st.session_state["transfer_df"] = fetch_transfers()
                     render_success("새로운 선적 내역이 등록되었습니다!")
@@ -73,19 +75,74 @@ def render_transfer_manager(master_df: pd.DataFrame):
                 with c1:
                     st.markdown(f"**{row['상품코드']}**")
                     st.caption(f"{row['상품명']}")
+                is_edit = st.session_state.get(f"edit_mode_{row['id']}", False)
+                
                 with c2:
-                    st.markdown(f"🛫 **{row['출발지']}** ({row['선적일']})<br>🛬 **{row['도착지']}** ({row['하차예정일']})", unsafe_allow_html=True)
+                    if is_edit:
+                        edit_source = st.text_input("출발지", value=str(row['출발지']), key=f"esrc_{row['id']}")
+                        edit_destination = st.text_input("도착지", value=str(row['도착지']), key=f"edest_{row['id']}")
+                    else:
+                        st.markdown(f"🛫 **{row['출발지']}** ({row['선적일']})<br>🛬 **{row['도착지']}** ({row['하차예정일']})", unsafe_allow_html=True)
+                
                 with c3:
-                    st.markdown(f"📦 수량: **{row['선적수량']:,.0f}**")
-                    st.markdown(f"상태: 🟠 **{row['상태']}**")
+                    if is_edit:
+                        edit_qty = st.number_input("수량", min_value=1, step=1, value=int(row['선적수량']) if pd.notna(row['선적수량']) else 1000, key=f"eqty_{row['id']}")
+                        edit_dep = st.date_input("선적일", value=pd.to_datetime(row['선적일']).date() if pd.notna(row['선적일']) else date.today(), key=f"edep_{row['id']}")
+                        edit_arr = st.date_input("하차예정일", value=pd.to_datetime(row['하차예정일']).date() if pd.notna(row['하차예정일']) else date.today(), key=f"earr_{row['id']}")
+                    else:
+                        c3_1, c3_2 = st.columns([7, 3])
+                        with c3_1:
+                            st.markdown(f"📦 수량: **{row['선적수량']:,.0f}**")
+                            st.markdown(f"상태: 🟠 **{row['상태']}**")
+                        with c3_2:
+                            if st.button("✏️", key=f"edit_btn_{row['id']}", help="내역 수정"):
+                                st.session_state[f"edit_mode_{row['id']}"] = True
+                                st.rerun()
+                                
                 with c4:
-                    if st.button("✅ 도착(입고완료) 처리", key=f"btn_done_{row['id']}", use_container_width=True):
-                        try:
-                            update_transfer_status(row['id'], "입고완료")
-                            st.session_state["transfer_df"] = fetch_transfers()
+                    if is_edit:
+                        if st.button("💾 저장", key=f"save_btn_{row['id']}", use_container_width=True):
+                            try:
+                                updates = {
+                                    "source": edit_source,
+                                    "destination": edit_destination,
+                                    "quantity": edit_qty,
+                                    "departure_date": edit_dep.strftime("%Y-%m-%d"),
+                                    "arrival_date": edit_arr.strftime("%Y-%m-%d")
+                                }
+                                update_transfer_details(row['id'], updates)
+                                st.session_state[f"edit_mode_{row['id']}"] = False
+                                st.session_state["transfer_df"] = fetch_transfers()
+                                st.rerun()
+                            except Exception as e:
+                                render_error(f"수정 실패: {e}")
+                        if st.button("❌ 취소", key=f"cancel_btn_{row['id']}", use_container_width=True):
+                            st.session_state[f"edit_mode_{row['id']}"] = False
                             st.rerun()
-                        except Exception as e:
-                            render_error(f"상태 업데이트 실패: {e}")
+                    else:
+                        if st.button("✅ 도착(입고완료) 처리", key=f"btn_done_{row['id']}", use_container_width=True):
+                            try:
+                                update_transfer_status(row['id'], "입고완료")
+                                st.session_state["transfer_df"] = fetch_transfers()
+                                st.rerun()
+                            except Exception as e:
+                                render_error(f"상태 업데이트 실패: {e}")
+                
+                # 특이사항 입력 영역 (편집 모드가 아닐 때만 표시)
+                if not is_edit:
+                    remarks_val = row.get('특이사항', '')
+                    col_rem1, col_rem2 = st.columns([5, 1])
+                    with col_rem1:
+                        new_remarks = st.text_input("특이사항", value=remarks_val if pd.notna(remarks_val) else "", key=f"rem_in_{row['id']}", label_visibility="collapsed", placeholder="특이사항 작성 (예: FDA 승인 대기중)")
+                    with col_rem2:
+                        if st.button("저장", key=f"rem_btn_{row['id']}", use_container_width=True):
+                            try:
+                                update_transfer_remarks(row['id'], new_remarks)
+                                st.session_state["transfer_df"] = fetch_transfers()
+                                st.rerun()
+                            except Exception as e:
+                                render_error(f"특이사항 업데이트 실패: {e}")
+                
                 st.markdown("<hr style='margin: 0.5rem 0;'>", unsafe_allow_html=True)
     else:
         st.write("현재 이동 중인 재고가 없습니다.")
