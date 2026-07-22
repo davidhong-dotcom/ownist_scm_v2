@@ -407,7 +407,7 @@ if menu == "⚙️ 데이터 설정":
                             filtered_df = pd.DataFrame()
                             if not all_ship_df.empty:
                                 ship_count, filtered_df = upsert_ownist_shipping(
-                                    all_ship_df, channel=channel_name, is_cumulative=True
+                                    all_ship_df, channel=channel_name, is_cumulative=not is_cgetc
                                 )
                             
                             # 세션 초기화 및 재조회
