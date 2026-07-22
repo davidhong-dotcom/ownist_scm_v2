@@ -545,8 +545,29 @@ if sel_channel != "전체":
 # ════════════════════════════════════════════════
 if menu == "📊 재고 대시보드":
     try:
+        # 상세 검색 필터 (품목구분 -> 상품)
+        col1, col2 = st.columns(2)
+        with col1:
+            categories = sorted(filtered_master["품목구분"].dropna().unique().tolist())
+            selected_category = st.multiselect("📂 품목구분 다중 선택 (비워두면 전체)", categories, key="inv_cat")
+        with col2:
+            if selected_category:
+                prod_list = filtered_master[filtered_master["품목구분"].isin(selected_category)]
+            else:
+                prod_list = filtered_master
+            
+            product_opts = sorted((prod_list["상품코드"].astype(str) + " - " + prod_list["상품명"].astype(str)).dropna().unique().tolist())
+            selected_product = st.multiselect("📦 상품 다중 선택 (비워두면 전체)", product_opts, key="inv_prod")
+
+        current_master = filtered_master.copy()
+        if selected_category:
+            current_master = current_master[current_master["품목구분"].isin(selected_category)]
+        if selected_product:
+            selected_codes = [p.split(" - ")[0] for p in selected_product]
+            current_master = current_master[current_master["상품코드"].astype(str).isin(selected_codes)]
+
         metrics_df = compute_metrics(
-            filtered_master,
+            current_master,
             filtered_inv,
             filtered_ship,
         )
@@ -580,6 +601,27 @@ if menu == "📊 재고 대시보드":
 # ════════════════════════════════════════════════
 elif menu == "📊 채널별 재고 대시보드":
     try:
+        # 상세 검색 필터 (품목구분 -> 상품)
+        col1, col2 = st.columns(2)
+        with col1:
+            categories = sorted(filtered_master["품목구분"].dropna().unique().tolist())
+            selected_category = st.multiselect("📂 품목구분 다중 선택 (비워두면 전체)", categories, key="ch_inv_cat")
+        with col2:
+            if selected_category:
+                prod_list = filtered_master[filtered_master["품목구분"].isin(selected_category)]
+            else:
+                prod_list = filtered_master
+            
+            product_opts = sorted((prod_list["상품코드"].astype(str) + " - " + prod_list["상품명"].astype(str)).dropna().unique().tolist())
+            selected_product = st.multiselect("📦 상품 다중 선택 (비워두면 전체)", product_opts, key="ch_inv_prod")
+
+        current_master = filtered_master.copy()
+        if selected_category:
+            current_master = current_master[current_master["품목구분"].isin(selected_category)]
+        if selected_product:
+            selected_codes = [p.split(" - ")[0] for p in selected_product]
+            current_master = current_master[current_master["상품코드"].astype(str).isin(selected_codes)]
+
         # 보기 옵션 체크박스들 (전역)
         col_chk1, col_chk2 = st.columns(2)
         with col_chk1:
@@ -602,7 +644,7 @@ elif menu == "📊 채널별 재고 대시보드":
 
                 try:
                     metrics_df_ch = compute_metrics(
-                        filtered_master,
+                        current_master,
                         ch_inv,
                         ch_ship,
                     )
