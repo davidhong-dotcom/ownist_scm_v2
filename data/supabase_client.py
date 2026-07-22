@@ -57,9 +57,9 @@ def upsert_ownist_shipping(df: pd.DataFrame, channel: str = "CK로지스", is_cu
     supabase = get_supabase()
     
     # 1. 업로드하려는 주문번호 중 이미 존재하는 주문번호 조회
-    # (단, is_cumulative=True인 누적 데이터는 항상 덮어쓰기 하므로 중복 체크를 생략합니다.)
+    # (단, is_cumulative=True인 누적 데이터나 CGETC 데이터는 항상 덮어쓰기 하므로 중복 체크를 생략합니다.)
     existing_order_numbers = set()
-    if "주문번호" in df.columns and not is_cumulative:
+    if "주문번호" in df.columns and not is_cumulative and channel != "CGETC":
         # 빈 값 제거 후 중복 제거된 리스트 생성
         # 단, "집계-" 로 시작하는 가짜 주문번호는 중복 체크에서 제외 (upsert로 날짜별 덮어쓰기 처리)
         order_numbers_to_check = df["주문번호"].dropna().astype(str).str.strip()
