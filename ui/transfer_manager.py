@@ -20,6 +20,7 @@ def render_transfer_manager(master_df: pd.DataFrame):
                 )
                 source = st.text_input("출발지", value="CK로지스")
                 qty = st.number_input("선적 수량", min_value=1, step=1, value=1000)
+                transport_method = st.selectbox("운송 방식", ["선적", "항공"])
             with col2:
                 departure_date = st.date_input("선적일 (출발일)", value=date.today())
                 arrival_date = st.date_input("하차예정일 (도착예정일)", value=date.today())
@@ -36,7 +37,8 @@ def render_transfer_manager(master_df: pd.DataFrame):
                         qty,
                         departure_date.strftime("%Y-%m-%d"),
                         arrival_date.strftime("%Y-%m-%d"),
-                        remarks
+                        remarks,
+                        transport_method
                     )
                     st.session_state["transfer_df"] = fetch_transfers()
                     render_success("새로운 선적 내역이 등록되었습니다!")
@@ -81,8 +83,12 @@ def render_transfer_manager(master_df: pd.DataFrame):
                     if is_edit:
                         edit_source = st.text_input("출발지", value=str(row['출발지']), key=f"esrc_{row['id']}")
                         edit_destination = st.text_input("도착지", value=str(row['도착지']), key=f"edest_{row['id']}")
+                        cur_method = str(row.get('운송방식', '선적'))
+                        edit_transport = st.selectbox("운송 방식", ["선적", "항공"], index=0 if cur_method == "선적" else 1, key=f"etrans_{row['id']}")
                     else:
-                        st.markdown(f"🛫 **{row['출발지']}** ({row['선적일']})<br>🛬 **{row['도착지']}** ({row['하차예정일']})", unsafe_allow_html=True)
+                        t_icon = "✈️" if row.get("운송방식") == "항공" else "🚢"
+                        t_method = str(row.get('운송방식', '선적'))
+                        st.markdown(f"🛫 **{row['출발지']}** ({row['선적일']})<br>🛬 **{row['도착지']}** ({row['하차예정일']})<br>{t_icon} {t_method}", unsafe_allow_html=True)
                 
                 with c3:
                     if is_edit:
@@ -108,7 +114,8 @@ def render_transfer_manager(master_df: pd.DataFrame):
                                     "destination": edit_destination,
                                     "quantity": edit_qty,
                                     "departure_date": edit_dep.strftime("%Y-%m-%d"),
-                                    "arrival_date": edit_arr.strftime("%Y-%m-%d")
+                                    "arrival_date": edit_arr.strftime("%Y-%m-%d"),
+                                    "transport_method": edit_transport
                                 }
                                 update_transfer_details(row['id'], updates)
                                 st.session_state[f"edit_mode_{row['id']}"] = False
