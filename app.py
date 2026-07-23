@@ -28,6 +28,8 @@ if 'ui.projected_inventory' in sys.modules:
     importlib.reload(sys.modules['ui.projected_inventory'])
 if 'ui.transfer_manager' in sys.modules:
     importlib.reload(sys.modules['ui.transfer_manager'])
+if 'ui.la_shipping_recommend' in sys.modules:
+    importlib.reload(sys.modules['ui.la_shipping_recommend'])
 
 import re
 
@@ -180,7 +182,7 @@ with st.sidebar:
     # 탭 대신 메뉴 방식으로 구현
     menu = st.radio(
         "메뉴 선택",
-        ["📊 재고 대시보드", "📊 채널별 재고 대시보드", "🚚 기간별 출고현황", "🔮 S&OP 시뮬레이션", "📦 발주 및 입고현황", "🚢 선적 및 이동 관리", "🌐 다단계 예상재고", "🗓️ 발주 예측 캘린더", "⚙️ 데이터 설정"],
+        ["📊 재고 대시보드", "📊 채널별 재고 대시보드", "🚚 기간별 출고현황", "🔮 S&OP 시뮬레이션", "📦 발주 및 입고현황", "🚢 선적 및 이동 관리", "🚢 미국 선적 추천 일정", "🌐 다단계 예상재고", "🗓️ 발주 예측 캘린더", "⚙️ 데이터 설정"],
         label_visibility="collapsed"
     )
     
@@ -841,4 +843,20 @@ elif menu == "🚢 선적 및 이동 관리":
         render_transfer_manager(filtered_master)
     except Exception as e:
         render_error(f"선적 관리 오류: {e}")
+        st.exception(e)
+
+# ════════════════════════════════════════════════
+# 메뉴: 🚢 미국 선적 추천 일정
+# ════════════════════════════════════════════════
+elif menu == "🚢 미국 선적 추천 일정":
+    from ui.la_shipping_recommend import render_la_shipping_recommendation
+    try:
+        render_la_shipping_recommendation(
+            filtered_master,
+            st.session_state["inventory_df"],
+            st.session_state["shipping_df"],
+            today
+        )
+    except Exception as e:
+        render_error(f"미국 선적 일정 추천 오류: {e}")
         st.exception(e)
