@@ -30,6 +30,8 @@ if 'ui.transfer_manager' in sys.modules:
     importlib.reload(sys.modules['ui.transfer_manager'])
 if 'ui.la_shipping_recommend' in sys.modules:
     importlib.reload(sys.modules['ui.la_shipping_recommend'])
+if 'ui.multi_level_calendar' in sys.modules:
+    importlib.reload(sys.modules['ui.multi_level_calendar'])
 
 import re
 
@@ -179,13 +181,54 @@ today = get_today_kst()
 # ════════════════════════════════════════════════
 with st.sidebar:
     st.markdown("### 📌 메뉴")
-    # 탭 대신 메뉴 방식으로 구현
-    menu = st.radio(
+    main_menus = [
+        "📊 재고 대시보드", "📊 채널별 재고 대시보드", "🚚 기간별 출고현황", 
+        "📦 발주 및 입고현황", "🚢 선적 및 이동 관리", "🚢 미국 선적 추천 일정", 
+        "🗓️ 다단계 예상재고 캘린더", "⚙️ 데이터 설정"
+    ]
+    
+    deprecated_menus = [
+        "(미사용) 🔮 S&OP 시뮬레이션", 
+        "(미사용) 🌐 다단계 예상재고", 
+        "(미사용) 🗓️ 발주 예측 캘린더"
+    ]
+
+    if "active_menu" not in st.session_state:
+        st.session_state["active_menu"] = main_menus[0]
+
+    def on_main_change():
+        if st.session_state.get("main_radio") is not None:
+            st.session_state["active_menu"] = st.session_state["main_radio"]
+            st.session_state["dep_radio"] = None
+
+    def on_dep_change():
+        if st.session_state.get("dep_radio") is not None:
+            st.session_state["active_menu"] = st.session_state["dep_radio"]
+            st.session_state["main_radio"] = None
+
+    # index 파라미터는 초기 렌더링 또는 state 변경 시 반영
+    main_idx = main_menus.index(st.session_state["active_menu"]) if st.session_state["active_menu"] in main_menus else None
+    st.radio(
         "메뉴 선택",
-        ["📊 재고 대시보드", "📊 채널별 재고 대시보드", "🚚 기간별 출고현황", "🔮 S&OP 시뮬레이션", "📦 발주 및 입고현황", "🚢 선적 및 이동 관리", "🚢 미국 선적 추천 일정", "🌐 다단계 예상재고", "🗓️ 발주 예측 캘린더", "⚙️ 데이터 설정"],
-        label_visibility="collapsed"
+        main_menus,
+        key="main_radio",
+        on_change=on_main_change,
+        label_visibility="collapsed",
+        index=main_idx
     )
     
+    with st.expander("🗑️ 미사용 메뉴"):
+        dep_idx = deprecated_menus.index(st.session_state["active_menu"]) if st.session_state["active_menu"] in deprecated_menus else None
+        st.radio(
+            "미사용 메뉴",
+            deprecated_menus,
+            key="dep_radio",
+            on_change=on_dep_change,
+            label_visibility="collapsed",
+            index=dep_idx
+        )
+        
+    menu = st.session_state["active_menu"]
     st.divider()
 
     if menu != "⚙️ 데이터 설정":
@@ -482,7 +525,12 @@ with st.container():
 
     # 1) 구분 필터
     구분_opts = ["전체"] + sorted(st.session_state["master_df"]["구분"].dropna().unique().tolist())
-    sel_구분 = fc1.selectbox("구분", 구분_opts, key="fil_구분_공통")
+    
+    default_구분_idx = 0
+    if menu == "🗓️ 다단계 예상재고 캘린더" and "상품" in 구분_opts:
+        default_구분_idx = 구분_opts.index("상품")
+        
+    sel_구분 = fc1.selectbox("구분", 구분_opts, key="fil_구분_공통", index=default_구분_idx)
     
     # 2) 품목구분 필터
     품목_opts = ["전체"] + sorted(st.session_state["master_df"]["품목구분"].dropna().unique().tolist())
@@ -786,9 +834,9 @@ elif menu == "📦 발주 및 입고현황":
             )
 
 # ════════════════════════════════════════════════
-# 메뉴: 🔮 S&OP 시뮬레이션
+# 메뉴: (미사용) 🔮 S&OP 시뮬레이션
 # ════════════════════════════════════════════════
-elif menu == "🔮 S&OP 시뮬레이션":
+elif menu == "(미사용) 🔮 S&OP 시뮬레이션":
     try:
         render_sop_simulation(
             filtered_master,
@@ -802,9 +850,9 @@ elif menu == "🔮 S&OP 시뮬레이션":
         st.exception(e)
 
 # ════════════════════════════════════════════════
-# 메뉴: 🌐 다단계 예상재고
+# 메뉴: (미사용) 🌐 다단계 예상재고
 # ════════════════════════════════════════════════
-elif menu == "🌐 다단계 예상재고":
+elif menu == "(미사용) 🌐 다단계 예상재고":
     from ui.projected_inventory import render_projected_inventory
     try:
         render_projected_inventory(
@@ -819,9 +867,9 @@ elif menu == "🌐 다단계 예상재고":
         st.exception(e)
 
 # ════════════════════════════════════════════════
-# 메뉴: 🗓️ 발주 예측 캘린더
+# 메뉴: (미사용) 🗓️ 발주 예측 캘린더
 # ════════════════════════════════════════════════
-elif menu == "🗓️ 발주 예측 캘린더":
+elif menu == "(미사용) 🗓️ 발주 예측 캘린더":
     from ui.forecast_calendar import render_forecast_calendar
     try:
         render_forecast_calendar(
@@ -832,6 +880,23 @@ elif menu == "🗓️ 발주 예측 캘린더":
         )
     except Exception as e:
         render_error(f"발주 예측 캘린더 오류: {e}")
+        st.exception(e)
+
+# ════════════════════════════════════════════════
+# 메뉴: 🗓️ 다단계 예상재고 캘린더
+# ════════════════════════════════════════════════
+elif menu == "🗓️ 다단계 예상재고 캘린더":
+    from ui.multi_level_calendar import render_multi_level_calendar
+    try:
+        render_multi_level_calendar(
+            filtered_master,
+            st.session_state["inventory_df"],
+            st.session_state["shipping_df"],
+            st.session_state.get("po_df"),
+            st.session_state.get("transfer_df")
+        )
+    except Exception as e:
+        render_error(f"다단계 예상재고 캘린더 오류: {e}")
         st.exception(e)
 
 # ════════════════════════════════════════════════
