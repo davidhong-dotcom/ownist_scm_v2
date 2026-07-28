@@ -32,6 +32,8 @@ if 'ui.la_shipping_recommend' in sys.modules:
     importlib.reload(sys.modules['ui.la_shipping_recommend'])
 if 'ui.multi_level_calendar' in sys.modules:
     importlib.reload(sys.modules['ui.multi_level_calendar'])
+if 'ui.scm_documents' in sys.modules:
+    importlib.reload(sys.modules['ui.scm_documents'])
 
 import re
 
@@ -192,6 +194,12 @@ with st.sidebar:
         "(미사용) 🌐 다단계 예상재고", 
         "(미사용) 🗓️ 발주 예측 캘린더"
     ]
+    
+    scm_menus = [
+        "📝 발주서 작성",
+        "🏷️ 박스 입고라벨지 작성",
+        "📄 패킹리스트(거래명세서) 작성"
+    ]
 
     if "active_menu" not in st.session_state:
         st.session_state["active_menu"] = main_menus[0]
@@ -200,11 +208,19 @@ with st.sidebar:
         if st.session_state.get("main_radio") is not None:
             st.session_state["active_menu"] = st.session_state["main_radio"]
             st.session_state["dep_radio"] = None
+            st.session_state["scm_radio"] = None
 
     def on_dep_change():
         if st.session_state.get("dep_radio") is not None:
             st.session_state["active_menu"] = st.session_state["dep_radio"]
             st.session_state["main_radio"] = None
+            st.session_state["scm_radio"] = None
+
+    def on_scm_change():
+        if st.session_state.get("scm_radio") is not None:
+            st.session_state["active_menu"] = st.session_state["scm_radio"]
+            st.session_state["main_radio"] = None
+            st.session_state["dep_radio"] = None
 
     # index 파라미터는 초기 렌더링 또는 state 변경 시 반영
     main_idx = main_menus.index(st.session_state["active_menu"]) if st.session_state["active_menu"] in main_menus else None
@@ -216,6 +232,17 @@ with st.sidebar:
         label_visibility="collapsed",
         index=main_idx
     )
+    
+    with st.expander("🛠️ SCM 문서 자동화"):
+        scm_idx = scm_menus.index(st.session_state["active_menu"]) if st.session_state["active_menu"] in scm_menus else None
+        st.radio(
+            "SCM 문서 자동화",
+            scm_menus,
+            key="scm_radio",
+            on_change=on_scm_change,
+            label_visibility="collapsed",
+            index=scm_idx
+        )
     
     with st.expander("🗑️ 미사용 메뉴"):
         dep_idx = deprecated_menus.index(st.session_state["active_menu"]) if st.session_state["active_menu"] in deprecated_menus else None
@@ -924,4 +951,31 @@ elif menu == "🚢 미국 선적 추천 일정":
         )
     except Exception as e:
         render_error(f"미국 선적 일정 추천 오류: {e}")
+        st.exception(e)
+
+# ════════════════════════════════════════════════
+# 메뉴: 🛠️ SCM 문서 자동화 (3종)
+# ════════════════════════════════════════════════
+elif menu == "📝 발주서 작성":
+    from ui.scm_documents import render_po_generator
+    try:
+        render_po_generator(filtered_master)
+    except Exception as e:
+        render_error(f"발주서 작성 오류: {e}")
+        st.exception(e)
+
+elif menu == "🏷️ 박스 입고라벨지 작성":
+    from ui.scm_documents import render_label_generator
+    try:
+        render_label_generator(filtered_master)
+    except Exception as e:
+        render_error(f"박스 입고라벨지 작성 오류: {e}")
+        st.exception(e)
+
+elif menu == "📄 패킹리스트(거래명세서) 작성":
+    from ui.scm_documents import render_packing_list_generator
+    try:
+        render_packing_list_generator(filtered_master)
+    except Exception as e:
+        render_error(f"패킹리스트 작성 오류: {e}")
         st.exception(e)
