@@ -35,7 +35,8 @@ def load_scraped_schedules(start_date_str: str, port_name: str) -> pd.DataFrame:
         for d in data:
             vessel_full = f"{d.get('vessel_name', '')} {d.get('voyage_no', '')}".strip()
             mapped.append({
-                "Vessel": f"🌟마스터 정기선({vessel_full})", 
+                "조회방법": "Scraper",
+                "Vessel": vessel_full, 
                 "Cut-off (화물 반입 마감)": d.get("cargo_cutoff", ""),
                 "ETD (출항)": d.get("etd", ""),
                 "ETA (LA 입항)": d.get("eta", ""),
@@ -161,6 +162,7 @@ def fetch_openapi_schedules(start_date_str: str, prt_ag_cd: str, lead_time_days:
                                     lt = 14
                                 
                                 parsed_schedules.append({
+                                    "조회방법": "API",
                                     "Vessel": f"{vsslNm}",
                                     "Cut-off (화물 반입 마감)": cutoff_str,
                                     "ETD (출항)": etd_str,
@@ -186,42 +188,19 @@ def fetch_openapi_schedules(start_date_str: str, prt_ag_cd: str, lead_time_days:
                 df = df.drop_duplicates(subset=["ETD (출항)"]).sort_values("ETD (출항)")
                 
             if not df.empty:
-                # 마지막 선박 출항일 이후의 가상 예측 스케줄(12주) 자동 생성 (장기 계획용)
-                last_etd_str = df.iloc[-1]["ETD (출항)"]
-                last_etd_dt = datetime.strptime(last_etd_str, "%Y-%m-%d").date()
-                
-                # 다음주 목요일을 첫 기준으로 설정
-                days_ahead = 3 - last_etd_dt.weekday() # 3: Thursday
-                if days_ahead <= 0:
-                    days_ahead += 7
-                next_thursday = last_etd_dt + timedelta(days=days_ahead)
-                
-                projected = []
-                for i in range(12):
-                    etd = next_thursday + timedelta(weeks=i)
-                    eta = etd + timedelta(days=14)
-                    cutoff = etd - timedelta(days=2) # 화물 마감은 2일 전
-                    
-                    projected.append({
-                        "Vessel": f"🌟예상 정기선 (장기계획용)",
-                        "Cut-off (화물 반입 마감)": cutoff.strftime("%Y-%m-%d"),
-                        "ETD (출항)": etd.strftime("%Y-%m-%d"),
-                        "ETA (LA 입항)": eta.strftime("%Y-%m-%d"),
-                        "Lead Time": "14일"
-                    })
-                    
-                proj_df = pd.DataFrame(projected)
-                return pd.concat([df, proj_df], ignore_index=True)
+                df = df[['조회방법', 'Vessel', 'Cut-off (화물 반입 마감)', 'ETD (출항)', 'ETA (LA 입항)', 'Lead Time']]
+                return df
                 
         elif not scraped_df.empty:
+            scraped_df = scraped_df[['조회방법', 'Vessel', 'Cut-off (화물 반입 마감)', 'ETD (출항)', 'ETA (LA 입항)', 'Lead Time']]
             return scraped_df
                 
         # 조건에 맞는 선박이 없으면 빈 DataFrame 반환
-        return pd.DataFrame(columns=["Vessel", "Cut-off (화물 반입 마감)", "ETD (출항)", "ETA (LA 입항)", "Lead Time"])
+        return pd.DataFrame(columns=["조회방법", "Vessel", "Cut-off (화물 반입 마감)", "ETD (출항)", "ETA (LA 입항)", "Lead Time"])
         
     except Exception as e:
         st.error(f"🚨 공공데이터 API 통신 중 오류가 발생했습니다: {e}")
-        return pd.DataFrame(columns=["Vessel", "Cut-off (화물 반입 마감)", "ETD (출항)", "ETA (LA 입항)", "Lead Time"])
+        return pd.DataFrame(columns=["조회방법", "Vessel", "Cut-off (화물 반입 마감)", "ETD (출항)", "ETA (LA 입항)", "Lead Time"])
 
 def render_la_shipping_recommendation(master_df: pd.DataFrame, inventory_df: pd.DataFrame, shipping_df: pd.DataFrame, today: date):
     col_title, col_btn = st.columns([4, 1])
@@ -327,8 +306,8 @@ def render_la_shipping_recommendation(master_df: pd.DataFrame, inventory_df: pd.
                 else:
                     recommended = possible_vessels.iloc[-1]
                     
-                    is_proj = "🌟예상 정기선" in recommended['Vessel'] or "🌟마스터 정기선" in recommended['Vessel']
-                    badge = "💡 가상 스케줄(장기계획용)" if "🌟예상 정기선" in recommended['Vessel'] else ("🚢 마스터 스케줄(스크래핑)" if "🌟마스터 정기선" in recommended['Vessel'] else "🚢 확정 스케줄(OpenAPI)")
+                    is_scraper = recommended.get('조회방법') == 'Scraper'
+                    badge = "🚢 마스터 스케줄(Scraper)" if is_scraper else "🚢 확정 스케줄(API)"
                     
                     st.success(f"✅ **추천 선적 (Recommended Vessel): {recommended['Vessel']}**  `{badge}`")
                     st.write(f"⏰ **화물 반입 마감(Cargo Cut-off)**: {recommended['Cut-off (화물 반입 마감)']}")
