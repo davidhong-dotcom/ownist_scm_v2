@@ -286,7 +286,7 @@ def render_metrics_table(metrics_df: pd.DataFrame, key: str = None):
         return [""] * len(row)
 
     styled = display.style.apply(_highlight, axis=1)
-    st.dataframe(styled, use_container_width=True, height=500)
+    st.dataframe(styled, width="stretch", height=500)
 
     csv = metrics_df.to_csv(index=False, encoding="utf-8-sig")
     dl_key = f"dl_btn_{key}" if key else "dl_btn_default"
@@ -332,7 +332,7 @@ def render_shipping_table(daily_df: pd.DataFrame, start_date, end_date, period_t
     format_dict = {col: "{:,.0f}" for col in numeric_cols}
     styled_pivot = pivot.style.format(format_dict)
 
-    st.dataframe(styled_pivot, use_container_width=True, height=460)
+    st.dataframe(styled_pivot, width="stretch", height=460)
 
     csv = pivot.to_csv(index=False, encoding="utf-8-sig")
     st.download_button(

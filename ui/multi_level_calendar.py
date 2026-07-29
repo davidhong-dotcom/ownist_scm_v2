@@ -420,7 +420,7 @@ def render_multi_level_calendar(master_df, inventory_df, shipping_df, po_df, tra
     _, col_btn1, col_sel2, col_btn2, _ = st.columns([3, 1, 2, 1, 3])
     
     with col_btn1:
-        st.button("◀ 이전 달", on_click=go_prev, key="btn_ml_prev", use_container_width=True)
+        st.button("◀ 이전 달", on_click=go_prev, key="btn_ml_prev", width="stretch")
         
     with col_sel2:
         st.selectbox(
@@ -433,7 +433,7 @@ def render_multi_level_calendar(master_df, inventory_df, shipping_df, po_df, tra
         )
 
     with col_btn2:
-        st.button("다음 달 ▶", on_click=go_next, key="btn_ml_next", use_container_width=True)
+        st.button("다음 달 ▶", on_click=go_next, key="btn_ml_next", width="stretch")
                 
     st.markdown("""
         <style>

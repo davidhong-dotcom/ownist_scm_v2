@@ -47,7 +47,7 @@ def render_sop_simulation(master_df: pd.DataFrame, inventory_df: pd.DataFrame, s
         auto_moq = st.checkbox("MOQ 본품 자동 보정", value=True, help="체험키트 등 소량 발주 시 MOQ를 맞추기 위해 본품 산출량을 올립니다.")
     with col_btn:
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🔄 초기화", use_container_width=True):
+        if st.button("🔄 초기화", width="stretch"):
             if "sop_overrides" in st.session_state:
                 del st.session_state["sop_overrides"]
             st.rerun()
@@ -243,7 +243,7 @@ def render_sop_simulation(master_df: pd.DataFrame, inventory_df: pd.DataFrame, s
         styled_df,
         key="sop_data_editor",
         on_change=on_editor_change,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         height=500,
         column_config={
@@ -304,7 +304,7 @@ def render_sop_simulation(master_df: pd.DataFrame, inventory_df: pd.DataFrame, s
         
         if not agg_df.empty:
             agg_styled = agg_df.style.format({"총 확정생산량(스틱 단위)": "{:,.0f}"})
-            st.dataframe(agg_styled, use_container_width=True)
+            st.dataframe(agg_styled, width="stretch")
         else:
             st.info("통합 발주가 필요한 생산수량이 없습니다.")
     else:

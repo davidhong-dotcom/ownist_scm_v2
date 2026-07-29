@@ -27,7 +27,7 @@ def render_transfer_manager(master_df: pd.DataFrame):
                 destination = st.text_input("도착지", value="CGETC")
                 remarks = st.text_input("특이사항 (선택)", placeholder="예) FDA 승인 대기중")
                 
-            submitted = st.form_submit_button("선적 등록", use_container_width=True)
+            submitted = st.form_submit_button("선적 등록", width="stretch")
             if submitted:
                 try:
                     insert_transfer(
@@ -107,7 +107,7 @@ def render_transfer_manager(master_df: pd.DataFrame):
                                 
                 with c4:
                     if is_edit:
-                        if st.button("💾 저장", key=f"save_btn_{row['id']}", use_container_width=True):
+                        if st.button("💾 저장", key=f"save_btn_{row['id']}", width="stretch"):
                             try:
                                 updates = {
                                     "source": edit_source,
@@ -123,11 +123,11 @@ def render_transfer_manager(master_df: pd.DataFrame):
                                 st.rerun()
                             except Exception as e:
                                 render_error(f"수정 실패: {e}")
-                        if st.button("❌ 취소", key=f"cancel_btn_{row['id']}", use_container_width=True):
+                        if st.button("❌ 취소", key=f"cancel_btn_{row['id']}", width="stretch"):
                             st.session_state[f"edit_mode_{row['id']}"] = False
                             st.rerun()
                     else:
-                        if st.button("✅ 도착(입고완료) 처리", key=f"btn_done_{row['id']}", use_container_width=True):
+                        if st.button("✅ 도착(입고완료) 처리", key=f"btn_done_{row['id']}", width="stretch"):
                             try:
                                 update_transfer_status(row['id'], "입고완료")
                                 st.session_state["transfer_df"] = fetch_transfers()
@@ -142,7 +142,7 @@ def render_transfer_manager(master_df: pd.DataFrame):
                     with col_rem1:
                         new_remarks = st.text_input("특이사항", value=remarks_val if pd.notna(remarks_val) else "", key=f"rem_in_{row['id']}", label_visibility="collapsed", placeholder="특이사항 작성 (예: FDA 승인 대기중)")
                     with col_rem2:
-                        if st.button("저장", key=f"rem_btn_{row['id']}", use_container_width=True):
+                        if st.button("저장", key=f"rem_btn_{row['id']}", width="stretch"):
                             try:
                                 update_transfer_remarks(row['id'], new_remarks)
                                 st.session_state["transfer_df"] = fetch_transfers()
@@ -157,6 +157,6 @@ def render_transfer_manager(master_df: pd.DataFrame):
     st.markdown("#### ✅ 과거 입고 완료 내역")
     if not completed_df.empty:
         with st.expander("입고 완료 내역 보기", expanded=False):
-            st.dataframe(completed_df[["선적일", "하차예정일", "상품명", "출발지", "도착지", "선적수량", "상태"]], use_container_width=True)
+            st.dataframe(completed_df[["선적일", "하차예정일", "상품명", "출발지", "도착지", "선적수량", "상태"]], width="stretch")
     else:
         st.caption("완료된 내역이 없습니다.")

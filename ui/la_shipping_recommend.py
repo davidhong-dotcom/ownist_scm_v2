@@ -359,10 +359,10 @@ def render_la_shipping_recommendation(master_df: pd.DataFrame, inventory_df: pd.
     if busan_schedules_df.empty:
         st.info("현재 공공데이터에 등록된 부산항 출항 스케줄이 없습니다.")
     else:
-        st.dataframe(busan_schedules_df.drop(columns=["ETA_dt"], errors="ignore"), use_container_width=True)
+        st.dataframe(busan_schedules_df.drop(columns=["ETA_dt"], errors="ignore"), width="stretch")
     
     st.markdown("### 📅 전체 선적 스케줄 (인천항 ➔ LA)")
     if icn_schedules_df.empty:
         st.info("현재 공공데이터에 등록된 인천항 출항 스케줄이 없습니다.")
     else:
-        st.dataframe(icn_schedules_df.drop(columns=["ETA_dt"], errors="ignore"), use_container_width=True)
+        st.dataframe(icn_schedules_df.drop(columns=["ETA_dt"], errors="ignore"), width="stretch")

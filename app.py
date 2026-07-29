@@ -301,7 +301,7 @@ if menu == "⚙️ 데이터 설정":
         placeholder="발주 시트 URL (gid 포함)",
     )
     
-    if st.button("📥 구글 시트 데이터 새로고침 (마스터 & 발주)", use_container_width=False):
+    if st.button("📥 구글 시트 데이터 새로고침 (마스터 & 발주)", width="content"):
         if not gsheet_url.strip():
             render_error("마스터 DB URL을 입력해 주세요.")
         else:
@@ -364,7 +364,7 @@ if menu == "⚙️ 데이터 설정":
                 help="예: 현재고_YYYYMMDD.xls (적치존 기준)",
             )
             if inventory_file:
-                if st.button("🚀 현재고 Supabase 전송", key="btn_inv_dom", use_container_width=True):
+                if st.button("🚀 현재고 Supabase 전송", key="btn_inv_dom", width="stretch"):
                     with st.spinner("현재고 파일 처리 및 전송 중..."):
                         try:
                             new_inv_df = parse_inventory_file(inventory_file)
@@ -384,7 +384,7 @@ if menu == "⚙️ 데이터 설정":
             )
             
             if shipping_file:
-                if st.button("🚀 출고 데이터 Supabase 전송", key="btn_ship_dom", use_container_width=True):
+                if st.button("🚀 출고 데이터 Supabase 전송", key="btn_ship_dom", width="stretch"):
                     with st.spinner("파일 처리 및 전송 중..."):
                         try:
                             from datetime import timedelta
@@ -434,7 +434,7 @@ if menu == "⚙️ 데이터 설정":
             skip_inventory = st.checkbox("🕰️ 과거 데이터 업로드 (체크 시 현재고는 덮어쓰지 않고 출고량만 누적합니다)", key=f"skip_inv_{tab_idx}")
 
             if files:
-                if st.button(f"🚀 {channel_name} 데이터 전송", key=f"btn_{tab_idx}", use_container_width=True):
+                if st.button(f"🚀 {channel_name} 데이터 전송", key=f"btn_{tab_idx}", width="stretch"):
                     # 매핑 데이터 방어 로직 (마스터 DB가 없을 경우 매핑 불가능)
                     mapping_df = st.session_state.get("mapping_df")
                     if mapping_df is None or mapping_df.empty:
@@ -490,7 +490,7 @@ if menu == "⚙️ 데이터 설정":
                             
                             if not filtered_df.empty:
                                 with st.expander(f"📋 {channel_name} 일일 순수 출고량(Delta) 미리보기"):
-                                    st.dataframe(filtered_df.head(10), use_container_width=True)
+                                    st.dataframe(filtered_df.head(10), width="stretch")
                                 
                         except Exception as e:
                             render_error(f"{channel_name} 데이터 처리 오류: {e}")
@@ -857,7 +857,7 @@ elif menu == "📦 발주 및 입고현황":
         with st.expander("📝 발주 및 입고 상세 데이터 테이블 보기", expanded=True):
             st.dataframe(
                 disp_po[["외주처", "상품명", "발주수량", "납기예정일", "입고상태"]].style.format({"발주수량": "{:,.0f}"}),
-                use_container_width=True
+                width="stretch"
             )
 
 # ════════════════════════════════════════════════

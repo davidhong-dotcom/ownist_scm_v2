@@ -136,7 +136,7 @@ def render_po_calendar(po_df: pd.DataFrame):
     _, col_btn1, col_sel, col_btn2, _ = st.columns([3, 1, 2, 1, 3])
     
     with col_btn1:
-        st.button("◀ 이전 달", on_click=go_prev, use_container_width=True)
+        st.button("◀ 이전 달", on_click=go_prev, width="stretch")
         
     with col_sel:
         selected_str = st.selectbox(
@@ -152,7 +152,7 @@ def render_po_calendar(po_df: pd.DataFrame):
                 st.rerun()
 
     with col_btn2:
-        st.button("다음 달 ▶", on_click=go_next, use_container_width=True)
+        st.button("다음 달 ▶", on_click=go_next, width="stretch")
                 
     # 선택된 달력 렌더링
     cal = POCalendar(po_dict, curr_view.year, curr_view.month)

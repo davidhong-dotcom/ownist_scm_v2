@@ -82,7 +82,7 @@ def render_po_generator(master_df: pd.DataFrame):
             "단가(부가세불포)": st.column_config.NumberColumn("단 가(부가세불포)", min_value=0.0, step=100.0, format="%.2f"),
             "비고": st.column_config.TextColumn("비 고")
         },
-        use_container_width=True,
+        width="stretch",
         num_rows="dynamic",
         key="po_editor"
     )
@@ -128,7 +128,7 @@ def render_po_generator(master_df: pd.DataFrame):
             data=excel_data,
             file_name=f"발주서_{supplier}_{order_date.strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
+            width="stretch"
         )
     with dl_col2:
         st.caption("💡 **인쇄 팁:** 브라우저 인쇄(`Ctrl + P`) 시 A4 가로/세로 용지에 꼭 맞게 실제 서흥 발주서 양식 스타일로 출력됩니다.")
@@ -265,7 +265,7 @@ def render_label_generator(master_df: pd.DataFrame):
             data=excel_data,
             file_name=f"박스라벨_{prod_code}_{lot_no}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
+            width="stretch"
         )
     with dl_col2:
         st.caption(f"💡 **인쇄 팁:** 브라우저 인쇄(`Ctrl + P`) 시 여백을 **'없음' 또는 '최소'**로 설정하시고 **'배경 그래픽 인쇄'**를 켜시면 {formtec_type.split(' ')[0]} 라벨지 칸에 정확히 맞춰 인쇄됩니다.")
@@ -398,7 +398,7 @@ def render_packing_list_generator(master_df: pd.DataFrame):
             "수량(EA)": st.column_config.NumberColumn("수량", min_value=0, step=1),
             "BOX": st.column_config.NumberColumn("BOX", min_value=0, step=1)
         },
-        use_container_width=True,
+        width="stretch",
         num_rows="dynamic",
         key="pl_editor"
     )
@@ -456,7 +456,7 @@ def render_packing_list_generator(master_df: pd.DataFrame):
                 data=excel_data,
                 file_name=f"{sheet_nm}_{ship_date.strftime('%Y%m%d')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
+                width="stretch"
             )
         with dl_col2:
             st.caption("💡 **인쇄 팁:** 브라우저 인쇄(`Ctrl + P`) 시 아래 미리보기 양식이 실제 오니스트 거래명세서 엑셀 템플릿과 동일한 비율로 출력됩니다.")
@@ -558,7 +558,7 @@ def render_packing_list_generator(master_df: pd.DataFrame):
                 data=excel_data,
                 file_name=f"CI_PL_{inv_no}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
+                width="stretch"
             )
         with dl_col2:
             st.caption("💡 **인쇄 팁:** 수출 신고 및 미국 세관 제출용 영문 상업송장/패킹리스트 양식입니다.")

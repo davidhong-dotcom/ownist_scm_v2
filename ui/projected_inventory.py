@@ -120,7 +120,7 @@ def render_projected_inventory(
                 "반영여부": st.column_config.CheckboxColumn("반영여부", default=True)
             },
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
             key=f"event_editor_{selected_code}"
         )
         for i, rec in enumerate(event_records):
@@ -275,4 +275,4 @@ def render_projected_inventory(
         "이동중(In-Transit)": "{:,.0f}",
         "한국 판매가능(일)": lambda x: f"{x:,.0f}" if isinstance(x, (int, float)) else x,
         "미국 판매가능(일)": lambda x: f"{x:,.0f}" if isinstance(x, (int, float)) else x
-    }), use_container_width=True)
+    }), width="stretch")

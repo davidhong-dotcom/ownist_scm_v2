@@ -335,7 +335,7 @@ def render_forecast_calendar(master_df: pd.DataFrame, inventory_df: pd.DataFrame
     _, col_btn1, col_sel2, col_btn2, _ = st.columns([3, 1, 2, 1, 3])
     
     with col_btn1:
-        st.button("◀ 이전 달", on_click=go_prev, key="btn_fc_prev", use_container_width=True)
+        st.button("◀ 이전 달", on_click=go_prev, key="btn_fc_prev", width="stretch")
         
     with col_sel2:
         st.selectbox(
@@ -348,7 +348,7 @@ def render_forecast_calendar(master_df: pd.DataFrame, inventory_df: pd.DataFrame
         )
 
     with col_btn2:
-        st.button("다음 달 ▶", on_click=go_next, key="btn_fc_next", use_container_width=True)
+        st.button("다음 달 ▶", on_click=go_next, key="btn_fc_next", width="stretch")
                 
     cal = ForecastCalendar(events_by_date, curr_view.year, curr_view.month)
     html_calendar = cal.formatmonth()
@@ -359,6 +359,6 @@ def render_forecast_calendar(master_df: pd.DataFrame, inventory_df: pd.DataFrame
         if forecast_events:
             df_ev = pd.DataFrame(forecast_events).sort_values("날짜")
             df_ev["날짜"] = df_ev["날짜"].astype(str)
-            st.dataframe(df_ev.style.format({"수량": "{:,.0f}"}), use_container_width=True)
+            st.dataframe(df_ev.style.format({"수량": "{:,.0f}"}), width="stretch")
         else:
             st.info("예측된 발주 일정이 없습니다.")
