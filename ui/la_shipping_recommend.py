@@ -44,7 +44,8 @@ def load_scraped_schedules(start_date_str: str, port_name: str) -> pd.DataFrame:
             })
             
         df = pd.DataFrame(mapped)
-        df = df[df["ETD (출항)"] >= start_date_str]
+        # 화물 반입 마감일이 오늘(start_date_str)보다 과거인 스케줄은 제외
+        df = df[df["Cut-off (화물 반입 마감)"] >= start_date_str]
         return df
     except Exception as e:
         print(f"Error loading scraped schedules from Supabase: {e}")
@@ -181,7 +182,8 @@ def fetch_openapi_schedules(start_date_str: str, prt_ag_cd: str, lead_time_days:
                             
         if parsed_schedules:
             df = pd.DataFrame(parsed_schedules).drop_duplicates().sort_values("ETD (출항)")
-            df = df[df["ETD (출항)"] >= start_date_str]
+            # 화물 반입 마감일이 오늘(start_date_str)보다 과거인 스케줄은 제외
+            df = df[df["Cut-off (화물 반입 마감)"] >= start_date_str]
             
             if not scraped_df.empty:
                 df = pd.concat([df, scraped_df], ignore_index=True)
