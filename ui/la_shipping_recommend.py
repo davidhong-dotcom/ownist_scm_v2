@@ -135,7 +135,32 @@ def fetch_openapi_schedules(start_date_str: str, prt_ag_cd: str, lead_time_days:
             df = pd.DataFrame(parsed_schedules).drop_duplicates().sort_values("ETD (출항)")
             df = df[df["ETD (출항)"] >= start_date_str]
             if not df.empty:
-                return df
+                # 마지막 선박 출항일 이후의 가상 예측 스케줄(12주) 자동 생성 (장기 계획용)
+                last_etd_str = df.iloc[-1]["ETD (출항)"]
+                last_etd_dt = datetime.strptime(last_etd_str, "%Y-%m-%d").date()
+                
+                # 다음주 목요일을 첫 기준으로 설정
+                days_ahead = 3 - last_etd_dt.weekday() # 3: Thursday
+                if days_ahead <= 0:
+                    days_ahead += 7
+                next_thursday = last_etd_dt + timedelta(days=days_ahead)
+                
+                projected = []
+                for i in range(12):
+                    etd = next_thursday + timedelta(weeks=i)
+                    eta = etd + timedelta(days=14)
+                    cutoff = etd - timedelta(days=4)
+                    
+                    projected.append({
+                        "Vessel": f"🌟예상 정기선 (장기계획용)",
+                        "Cut-off (서류/화물 마감)": cutoff.strftime("%Y-%m-%d"),
+                        "ETD (출항)": etd.strftime("%Y-%m-%d"),
+                        "ETA (LA 입항)": eta.strftime("%Y-%m-%d"),
+                        "Lead Time": "14일"
+                    })
+                    
+                proj_df = pd.DataFrame(projected)
+                return pd.concat([df, proj_df], ignore_index=True)
                 
         # 조건에 맞는 선박이 없으면 빈 DataFrame 반환
         return pd.DataFrame(columns=["Vessel", "Cut-off (서류/화물 마감)", "ETD (출항)", "ETA (LA 입항)", "Lead Time"])
@@ -232,7 +257,10 @@ def render_la_shipping_recommendation(master_df: pd.DataFrame, inventory_df: pd.
                 else:
                     recommended = possible_vessels.iloc[-1]
                     
-                    st.success(f"✅ **추천 선적 (Recommended Vessel): {recommended['Vessel']}**  `🚢 확정 스케줄(OpenAPI)`")
+                    is_proj = "🌟예상 정기선" in recommended['Vessel']
+                    badge = "💡 가상 스케줄(장기계획용)" if is_proj else "🚢 확정 스케줄(OpenAPI)"
+                    
+                    st.success(f"✅ **추천 선적 (Recommended Vessel): {recommended['Vessel']}**  `{badge}`")
                     st.write(f"⏰ **마감(Cut-off)**: {recommended['Cut-off (서류/화물 마감)']}")
                     st.write(f"🚢 **ETD({selected_port_name} 출항)**: {recommended['ETD (출항)']}")
                     st.write(f"🛬 **ETA(LA 항구 입항)**: {recommended['ETA (LA 입항)']}")
