@@ -34,21 +34,35 @@ async def get_combined_schedules():
 def main():
     schedules = asyncio.run(get_combined_schedules())
     
-    # Save to JSON file
-    # We should save it to the data directory at the project root
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(script_dir)
-    data_dir = os.path.join(project_root, "data")
-    
-    if not os.path.exists(data_dir):
-        os.makedirs(data_dir)
+    if not schedules:
+        print(f"[{datetime.now()}] 저장할 데이터가 없습니다.")
+        return
         
-    output_path = os.path.join(data_dir, "master_schedules.json")
-    
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(schedules, f, ensure_ascii=False, indent=2)
+    try:
+        import toml
+        from supabase import create_client, Client
         
-    print(f"[{datetime.now()}] 스크래핑 완료. 총 {len(schedules)}건이 {output_path}에 저장되었습니다.")
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(script_dir)
+        secrets_path = os.path.join(project_root, ".streamlit", "secrets.toml")
+        
+        secrets = toml.load(secrets_path)
+        url = secrets["supabase"]["url"]
+        key = secrets["supabase"]["key"]
+        
+        supabase: Client = create_client(url, key)
+        
+        # 기존 데이터 모두 삭제 (업데이트 방식)
+        supabase.table("shipping_master_schedules").delete().neq("id", 0).execute()
+        
+        # 새 데이터 일괄 삽입
+        # insert takes a list of dicts
+        res = supabase.table("shipping_master_schedules").insert(schedules).execute()
+        
+        print(f"[{datetime.now()}] 스크래핑 완료. 총 {len(schedules)}건이 Supabase DB에 저장되었습니다.")
+        
+    except Exception as e:
+        print(f"[{datetime.now()}] Supabase 저장 중 오류 발생: {e}")
 
 if __name__ == "__main__":
     main()

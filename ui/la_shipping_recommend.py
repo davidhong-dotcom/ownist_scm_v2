@@ -10,31 +10,32 @@ import os
 
 def load_scraped_schedules(start_date_str: str, port_name: str) -> pd.DataFrame:
     """
-    스크래퍼가 수집한 JSON 마스터 스케줄 데이터를 불러옵니다.
+    스크래퍼가 수집하여 Supabase DB에 저장한 마스터 스케줄 데이터를 불러옵니다.
     """
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(script_dir)
-    json_path = os.path.join(project_root, "data", "master_schedules.json")
-    
-    if not os.path.exists(json_path):
-        return pd.DataFrame()
-        
     try:
-        with open(json_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        if "supabase" not in st.secrets:
+            return pd.DataFrame()
             
+        from supabase import create_client, Client
+        url = st.secrets["supabase"]["url"]
+        key = st.secrets["supabase"]["key"]
+        supabase: Client = create_client(url, key)
+        
         # 출발지에 맞게 필터링 (부산항=KRPUS, 인천항=KRINC)
         origin_code = "KRPUS" if port_name == "부산항" else "KRINC"
-        filtered = [d for d in data if d.get("origin_port") == origin_code]
         
-        if not filtered:
+        response = supabase.table("shipping_master_schedules").select("*").eq("origin_port", origin_code).execute()
+        data = response.data
+        
+        if not data:
             return pd.DataFrame()
             
         # UI DataFrame 형식으로 변환
         mapped = []
-        for d in filtered:
+        for d in data:
+            vessel_full = f"{d.get('vessel_name', '')} {d.get('voyage_no', '')}".strip()
             mapped.append({
-                "Vessel": f"🌟마스터 정기선({d['carrier']})", 
+                "Vessel": f"🌟마스터 정기선({vessel_full})", 
                 "Cut-off (화물 반입 마감)": d.get("cargo_cutoff", ""),
                 "ETD (출항)": d.get("etd", ""),
                 "ETA (LA 입항)": d.get("eta", ""),
@@ -45,7 +46,7 @@ def load_scraped_schedules(start_date_str: str, port_name: str) -> pd.DataFrame:
         df = df[df["ETD (출항)"] >= start_date_str]
         return df
     except Exception as e:
-        print(f"Error loading scraped schedules: {e}")
+        print(f"Error loading scraped schedules from Supabase: {e}")
         return pd.DataFrame()
 
 def generate_mock_schedules(start_date: date, weeks: int = 8, lead_time_days: int = 35, port_name: str = "부산항"):
@@ -223,7 +224,23 @@ def fetch_openapi_schedules(start_date_str: str, prt_ag_cd: str, lead_time_days:
         return pd.DataFrame(columns=["Vessel", "Cut-off (화물 반입 마감)", "ETD (출항)", "ETA (LA 입항)", "Lead Time"])
 
 def render_la_shipping_recommendation(master_df: pd.DataFrame, inventory_df: pd.DataFrame, shipping_df: pd.DataFrame, today: date):
-    st.markdown('<div class="sec-title">🚢 미국 선적 일정 추천 (KR ➔ LA)</div>', unsafe_allow_html=True)
+    col_title, col_btn = st.columns([4, 1])
+    with col_title:
+        st.markdown('<div class="sec-title">🚢 미국 선적 일정 추천 (KR ➔ LA)</div>', unsafe_allow_html=True)
+    with col_btn:
+        if st.button("🔄 마스터 스케줄 갱신", help="클릭 시 선사 사이트에서 최신 스케줄을 수집합니다."):
+            with st.spinner("스크래퍼 실행 중... (약 10~30초 소요)"):
+                import subprocess
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                project_root = os.path.dirname(script_dir)
+                scraper_path = os.path.join(project_root, "scrapers", "scheduler_main.py")
+                
+                try:
+                    subprocess.run(["python", scraper_path], check=True, capture_output=True)
+                    st.success("갱신 완료!")
+                    st.rerun()
+                except subprocess.CalledProcessError as e:
+                    st.error(f"스크래핑 실패: {e.stderr.decode('utf-8', errors='ignore')}")
     
     if master_df is None or inventory_df is None or shipping_df is None or shipping_df.empty:
         st.info("데이터가 충분하지 않아 시뮬레이션을 실행할 수 없습니다. 데이터를 먼저 불러와 주세요.")
