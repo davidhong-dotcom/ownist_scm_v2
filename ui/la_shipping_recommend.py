@@ -260,6 +260,25 @@ def render_la_shipping_recommendation(master_df: pd.DataFrame, inventory_df: pd.
     if us_inv.empty:
         st.warning("CGETC(미국) 창고의 현재고 데이터가 없습니다. [데이터 설정]에서 미국 창고 재고를 업로드해 주세요.")
         return
+        
+    # 입고 예정 수량(Transfers) 반영
+    try:
+        from data.supabase_client import fetch_transfers
+        transfers_df = fetch_transfers()
+        if not transfers_df.empty:
+            in_transit_df = transfers_df[
+                transfers_df["도착지"].astype(str).str.contains("CGETC", na=False) &
+                ~transfers_df["상태"].astype(str).str.replace(" ", "").str.contains("입고완료|완료", na=False)
+            ]
+            if not in_transit_df.empty:
+                in_transit_agg = in_transit_df.groupby("상품코드")["선적수량"].sum().reset_index()
+                in_transit_agg.rename(columns={"선적수량": "입고예정수량"}, inplace=True)
+                
+                # us_inv에 입고예정수량 합산
+                us_inv = us_inv.merge(in_transit_agg, on="상품코드", how="left")
+                us_inv["현재고"] = us_inv["현재고"] + us_inv["입고예정수량"].fillna(0)
+    except Exception as e:
+        print(f"입고 예정 수량 반영 중 오류: {e}")
 
     with st.spinner("예상 소진일 산출 중..."):
         try:
@@ -298,7 +317,17 @@ def render_la_shipping_recommendation(master_df: pd.DataFrame, inventory_df: pd.
             c1, c2 = st.columns([1, 2])
             with c1:
                 st.markdown(f"#### 📦 {prod_name}")
-                st.write(f"- **현재고**: {row['현재고']:,.0f}개")
+                
+                in_transit = row.get("입고예정수량", 0)
+                if pd.isna(in_transit):
+                    in_transit = 0
+                    
+                if in_transit > 0:
+                    real_stock = row['현재고'] - in_transit
+                    st.write(f"- **현재고**: {row['현재고']:,.0f}개  \n  <span style='font-size: 0.85em; color: gray;'>(실재고 {real_stock:,.0f}개 + 입고예정 {in_transit:,.0f}개 반영)</span>", unsafe_allow_html=True)
+                else:
+                    st.write(f"- **현재고**: {row['현재고']:,.0f}개")
+                    
                 st.write(f"- **예상 소진일**: **<span style='color:#d32f2f;'>{row['예상소진일']}</span>**", unsafe_allow_html=True)
                 st.write(f"- **필요 입항일(Port ETA)**: {target_port_eta.strftime('%Y-%m-%d')} 이전")
                 
