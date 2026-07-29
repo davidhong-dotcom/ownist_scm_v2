@@ -301,7 +301,10 @@ def render_la_shipping_recommendation(master_df: pd.DataFrame, inventory_df: pd.
                 st.write(f"- **필요 입항일(Port ETA)**: {target_port_eta.strftime('%Y-%m-%d')} 이전")
                 
             with c2:
-                if possible_vessels.empty:
+                days_to_expiry = (expiry_date.date() - today).days
+                if days_to_expiry >= 90:
+                    st.info(f"💡 **선적 추천 보류 (여유)**  \n예상 소진일까지 **{days_to_expiry}일**이 남아 아직 선적 추천 대상이 아닙니다. 추후 다시 확인해 주세요.")
+                elif possible_vessels.empty:
                     st.error(f"🚨 **추천 가능한 선적 스케줄이 없습니다!**  \n창고 입고를 위해 늦어도 **{target_port_eta.strftime('%Y-%m-%d')}** 까지는 항구에 도착(ETA)해야 하지만, 해상 운송으로는 기한을 맞출 수 없습니다. **항공 운송(Air Freight)**을 고려하세요.")
                 else:
                     recommended = possible_vessels.iloc[-1]
