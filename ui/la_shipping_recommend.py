@@ -63,6 +63,7 @@ def load_scraped_schedules(start_date_str: str, port_name: str) -> pd.DataFrame:
         df = pd.DataFrame(mapped)
         # 화물 반입 마감일이 오늘(start_date_str)보다 과거인 스케줄은 제외
         df = df[df["Cut-off (화물 반입 마감)"] >= start_date_str]
+        df = df.reset_index(drop=True)
         return df
     except Exception as e:
         print(f"Error loading scraped schedules from Supabase: {e}")
@@ -256,10 +257,10 @@ def render_la_shipping_recommendation(master_df: pd.DataFrame, inventory_df: pd.
     if busan_schedules_df.empty:
         st.info("현재 공공데이터에 등록된 부산항 출항 스케줄이 없습니다.")
     else:
-        st.dataframe(busan_schedules_df.drop(columns=["ETA_dt"], errors="ignore"), width="stretch")
+        st.dataframe(busan_schedules_df.drop(columns=["ETA_dt"], errors="ignore"), width="stretch", hide_index=True)
     
     st.markdown("### 📅 전체 선적 스케줄 (인천항 ➔ LA)")
     if icn_schedules_df.empty:
         st.info("현재 공공데이터에 등록된 인천항 출항 스케줄이 없습니다.")
     else:
-        st.dataframe(icn_schedules_df.drop(columns=["ETA_dt"], errors="ignore"), width="stretch")
+        st.dataframe(icn_schedules_df.drop(columns=["ETA_dt"], errors="ignore"), width="stretch", hide_index=True)
