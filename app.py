@@ -851,7 +851,8 @@ elif menu == "📦 발주 및 입고현황":
             total_qty = disp_po["발주수량"].sum()
             st.metric("총 발주/입고예정 수량", f"{total_qty:,.0f} EA")
         with col_summary2:
-            pending_qty = disp_po[disp_po["입고상태"] != "완료"]["발주수량"].sum()
+            # '입고완료'라는 단어가 포함된 상태(예: '8. 생산, 입고완료')를 제외하고 미완료 수량 합산
+            pending_qty = disp_po[~disp_po["입고상태"].astype(str).str.replace(" ", "").str.contains("입고완료")]["발주수량"].sum()
             st.metric("미완료 수량", f"{pending_qty:,.0f} EA")
             
         with st.expander("📝 발주 및 입고 상세 데이터 테이블 보기", expanded=True):
