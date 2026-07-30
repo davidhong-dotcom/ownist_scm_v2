@@ -53,6 +53,7 @@ def load_scraped_schedules(start_date_str: str, port_name: str) -> pd.DataFrame:
                 if lt_days is None: lt_days = 14
                 
             mapped.append({
+                "선적사": d.get("carrier", ""),
                 "Vessel": vessel_full, 
                 "Cut-off (화물 반입 마감)": d.get("cargo_cutoff", ""),
                 "ETD (출항)": etd_str,
@@ -67,7 +68,7 @@ def load_scraped_schedules(start_date_str: str, port_name: str) -> pd.DataFrame:
         return df
     except Exception as e:
         print(f"Error loading scraped schedules from Supabase: {e}")
-        return pd.DataFrame()
+        return pd.DataFrame(columns=["선적사", "Vessel", "Cut-off (화물 반입 마감)", "ETD (출항)", "ETA (LA 입항)", "Lead Time"])
 
 def generate_mock_schedules(start_date: date, weeks: int = 8, lead_time_days: int = 35, port_name: str = "부산항"):
     """
@@ -103,9 +104,9 @@ def fetch_schedules(start_date_str: str, port_name: str = "부산항") -> pd.Dat
     """
     scraped_df = load_scraped_schedules(start_date_str, port_name)
     if not scraped_df.empty:
-        scraped_df = scraped_df[['Vessel', 'Cut-off (화물 반입 마감)', 'ETD (출항)', 'ETA (LA 입항)', 'Lead Time']]
+        scraped_df = scraped_df[['선적사', 'Vessel', 'Cut-off (화물 반입 마감)', 'ETD (출항)', 'ETA (LA 입항)', 'Lead Time']]
         return scraped_df
-    return pd.DataFrame(columns=["Vessel", "Cut-off (화물 반입 마감)", "ETD (출항)", "ETA (LA 입항)", "Lead Time"])
+    return pd.DataFrame(columns=["선적사", "Vessel", "Cut-off (화물 반입 마감)", "ETD (출항)", "ETA (LA 입항)", "Lead Time"])
 
 def render_la_shipping_recommendation(master_df: pd.DataFrame, inventory_df: pd.DataFrame, shipping_df: pd.DataFrame, today: date):
     col_title, col_btn = st.columns([4, 1])
@@ -241,7 +242,9 @@ def render_la_shipping_recommendation(master_df: pd.DataFrame, inventory_df: pd.
                     st.error(f"🚨 **추천 가능한 선적 스케줄이 없습니다!**  \n창고 입고를 위해 늦어도 **{target_port_eta.strftime('%Y-%m-%d')}** 까지는 항구에 도착(ETA)해야 하지만, 해상 운송으로는 기한을 맞출 수 없습니다. **항공 운송(Air Freight)**을 고려하세요.")
                 else:
                     recommended = possible_vessels.iloc[-1]
-                    st.success(f"✅ **추천 선적 (Recommended Vessel): {recommended['Vessel']}**")
+                    carrier = recommended.get('선적사', '')
+                    badge = f" `{carrier}`" if carrier else ""
+                    st.success(f"✅ **추천 선적 (Recommended Vessel): {recommended['Vessel']}**{badge}")
                     st.write(f"⏰ **화물 반입 마감(Cargo Cut-off)**: {recommended['Cut-off (화물 반입 마감)']}")
                     st.write(f"🚢 **ETD({selected_port_name} 출항)**: {recommended['ETD (출항)']}")
                     st.write(f"🛬 **ETA(LA 항구 입항)**: {recommended['ETA (LA 입항)']}")
