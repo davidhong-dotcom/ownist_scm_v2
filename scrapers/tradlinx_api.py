@@ -14,6 +14,10 @@ async def scrape_tradlinx(target_carrier=None, origin="KRPUS", dest="USLAX"):
     today_str = datetime.now().strftime("%Y-%m-%d")
     url = f"https://www.tradlinx.com/ko/ocean-schedule-fcl?org=105169&des=105373&day={today_str}"
     
+    # Streamlit Cloud 등 환경에서 브라우저 바이너리 자동 설치를 위한 코드
+    import os
+    os.system("playwright install chromium")
+    
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(
