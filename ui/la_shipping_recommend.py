@@ -34,13 +34,29 @@ def load_scraped_schedules(start_date_str: str, port_name: str) -> pd.DataFrame:
         mapped = []
         for d in data:
             vessel_full = f"{d.get('vessel_name', '')} {d.get('voyage_no', '')}".strip()
-            lt_days = d.get('transit_time_days')
-            lt_days = lt_days if lt_days is not None else 14
+            
+            etd_str = d.get("etd", "")
+            eta_str = d.get("eta", "")
+            
+            # ETA - ETD 계산
+            lt_days = 14
+            if etd_str and eta_str:
+                try:
+                    etd_dt = datetime.strptime(etd_str, "%Y-%m-%d").date()
+                    eta_dt = datetime.strptime(eta_str, "%Y-%m-%d").date()
+                    lt_days = (eta_dt - etd_dt).days
+                except Exception:
+                    lt_days = d.get('transit_time_days', 14)
+                    if lt_days is None: lt_days = 14
+            else:
+                lt_days = d.get('transit_time_days', 14)
+                if lt_days is None: lt_days = 14
+                
             mapped.append({
                 "Vessel": vessel_full, 
                 "Cut-off (화물 반입 마감)": d.get("cargo_cutoff", ""),
-                "ETD (출항)": d.get("etd", ""),
-                "ETA (LA 입항)": d.get("eta", ""),
+                "ETD (출항)": etd_str,
+                "ETA (LA 입항)": eta_str,
                 "Lead Time": f"{lt_days}일"
             })
             
