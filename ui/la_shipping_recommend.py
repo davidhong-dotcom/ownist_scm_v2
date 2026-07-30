@@ -34,13 +34,14 @@ def load_scraped_schedules(start_date_str: str, port_name: str) -> pd.DataFrame:
         mapped = []
         for d in data:
             vessel_full = f"{d.get('vessel_name', '')} {d.get('voyage_no', '')}".strip()
+            lt_days = d.get('transit_time_days')
+            lt_days = lt_days if lt_days is not None else 14
             mapped.append({
-                "조회방법": "Scraper",
                 "Vessel": vessel_full, 
                 "Cut-off (화물 반입 마감)": d.get("cargo_cutoff", ""),
                 "ETD (출항)": d.get("etd", ""),
                 "ETA (LA 입항)": d.get("eta", ""),
-                "Lead Time": f"{d.get('transit_time_days', 14)}일"
+                "Lead Time": f"{lt_days}일"
             })
             
         df = pd.DataFrame(mapped)
@@ -79,130 +80,15 @@ def generate_mock_schedules(start_date: date, weeks: int = 8, lead_time_days: in
     return pd.DataFrame(schedules)
 
 @st.cache_data(ttl=3600)
-def fetch_openapi_schedules(start_date_str: str, prt_ag_cd: str, lead_time_days: int = 35, port_name: str = "부산항") -> pd.DataFrame:
+def fetch_schedules(start_date_str: str, port_name: str = "부산항") -> pd.DataFrame:
     """
-    Fetch Port-to-Port schedules from OpenAPI (선박운항정보) if API key is provided in secrets.
-    Fallback to mock schedules if not available, API call fails, or no vessels to LA are found.
+    스크래핑된 마스터 스케줄을 가져옵니다.
     """
-    start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
-    end_date_str = (start_date + timedelta(days=30)).strftime("%Y%m%d")
-    sde_str = start_date.strftime("%Y%m%d")
-    
-    api_key = None
-    try:
-        if "OPENAPI_SERVICE_KEY" in st.secrets:
-            api_key = st.secrets["OPENAPI_SERVICE_KEY"]
-        else:
-            for k, v in st.secrets.items():
-                if hasattr(v, "get") and "OPENAPI_SERVICE_KEY" in v:
-                    api_key = v["OPENAPI_SERVICE_KEY"]
-                    break
-    except Exception:
-        pass
-        
-    if not api_key:
-        st.warning("⚠️ `secrets.toml`에서 `OPENAPI_SERVICE_KEY`를 찾을 수 없어 선박 스케줄을 조회할 수 없습니다.")
-        return pd.DataFrame(columns=["Vessel", "Cut-off (서류/화물 마감)", "ETD (출항)", "ETA (LA 입항)", "Lead Time"])
-        
-    try:
-        url = "http://apis.data.go.kr/1192000/VsslEtrynd5/Info5"
-        api_key_unquoted = urllib.parse.unquote(api_key)
-        
-        parsed_schedules = []
-        
-        # 최대 10페이지(약 500건)까지 조회
-        for page in range(1, 11):
-            params = {
-                "serviceKey": api_key_unquoted,
-                "prtAgCd": prt_ag_cd,
-                "sde": sde_str,
-                "ede": end_date_str,
-                "deGb": "O", # 출항일 기준
-                "pageNo": str(page),
-                "numOfRows": "50" 
-            }
-            
-            response = requests.get(url, params=params, timeout=15)
-            response.raise_for_status()
-            
-            root = ET.fromstring(response.content)
-            items = root.findall(".//item")
-            
-            if not items:
-                break
-                
-            for item in items:
-                dstnNatPrtCd = item.findtext("dstnNatPrtCd", "")
-                dstnPrtNm = item.findtext("dstnPrtNm", "")
-                
-                # 필터링: 목적지가 미국 LA/Long Beach 인 경우
-                if "USLAX" in dstnNatPrtCd or "USLGB" in dstnNatPrtCd or "LOS ANGELES" in dstnPrtNm.upper() or "LONG BEACH" in dstnPrtNm.upper():
-                    vsslNm = item.findtext("vsslNm", "Unknown Vessel")
-                    
-                    details = item.findall(".//detail")
-                    for det in details:
-                        tkoff = det.findtext("tkoffPrrrnDt", "")
-                        eta = det.findtext("dstnEtryptDt", "")
-                        
-                        if tkoff:
-                            try:
-                                etd_dt = datetime.strptime(tkoff, "%Y-%m-%d %H:%M:%S")
-                                etd_str = etd_dt.strftime("%Y-%m-%d")
-                                cutoff_str = (etd_dt - timedelta(days=4)).strftime("%Y-%m-%d")
-                                
-                                if eta:
-                                    try:
-                                        eta_dt = datetime.strptime(eta, "%Y-%m-%d %H:%M:%S")
-                                        eta_str = eta_dt.strftime("%Y-%m-%d")
-                                        lt = (eta_dt.date() - etd_dt.date()).days
-                                    except Exception:
-                                        eta_str = (etd_dt + timedelta(days=14)).strftime("%Y-%m-%d")
-                                        lt = 14
-                                else:
-                                    eta_str = (etd_dt + timedelta(days=14)).strftime("%Y-%m-%d")
-                                    lt = 14
-                                
-                                parsed_schedules.append({
-                                    "조회방법": "API",
-                                    "Vessel": f"{vsslNm}",
-                                    "Cut-off (화물 반입 마감)": cutoff_str,
-                                    "ETD (출항)": etd_str,
-                                    "ETA (LA 입항)": eta_str,
-                                    "Lead Time": f"{lt}일"
-                                })
-                            except Exception:
-                                pass
-            
-            # 한 번에 불러오는 건수가 50건 미만이면 다음 페이지가 없음
-            if len(items) < 50:
-                break
-                
-        # OpenAPI 결과와 스크래핑된 마스터 스케줄 병합
-        scraped_df = load_scraped_schedules(start_date_str, port_name)
-                            
-        if parsed_schedules:
-            df = pd.DataFrame(parsed_schedules).drop_duplicates().sort_values("ETD (출항)")
-            # 화물 반입 마감일이 오늘(start_date_str)보다 과거인 스케줄은 제외
-            df = df[df["Cut-off (화물 반입 마감)"] >= start_date_str]
-            
-            if not scraped_df.empty:
-                df = pd.concat([df, scraped_df], ignore_index=True)
-                df = df.drop_duplicates(subset=["ETD (출항)"]).sort_values("ETD (출항)")
-                
-            if not df.empty:
-                df = df[['조회방법', 'Vessel', 'Cut-off (화물 반입 마감)', 'ETD (출항)', 'ETA (LA 입항)', 'Lead Time']]
-                return df
-                
-        elif not scraped_df.empty:
-            scraped_df = scraped_df[['조회방법', 'Vessel', 'Cut-off (화물 반입 마감)', 'ETD (출항)', 'ETA (LA 입항)', 'Lead Time']]
-            return scraped_df
-                
-        # 조건에 맞는 선박이 없으면 빈 DataFrame 반환
-        return pd.DataFrame(columns=["조회방법", "Vessel", "Cut-off (화물 반입 마감)", "ETD (출항)", "ETA (LA 입항)", "Lead Time"])
-        
-    except Exception as e:
-        st.error(f"🚨 공공데이터 API 통신 중 오류가 발생했습니다: {e}")
-        return pd.DataFrame(columns=["조회방법", "Vessel", "Cut-off (화물 반입 마감)", "ETD (출항)", "ETA (LA 입항)", "Lead Time"])
+    scraped_df = load_scraped_schedules(start_date_str, port_name)
+    if not scraped_df.empty:
+        scraped_df = scraped_df[['Vessel', 'Cut-off (화물 반입 마감)', 'ETD (출항)', 'ETA (LA 입항)', 'Lead Time']]
+        return scraped_df
+    return pd.DataFrame(columns=["Vessel", "Cut-off (화물 반입 마감)", "ETD (출항)", "ETA (LA 입항)", "Lead Time"])
 
 def render_la_shipping_recommendation(master_df: pd.DataFrame, inventory_df: pd.DataFrame, shipping_df: pd.DataFrame, today: date):
     col_title, col_btn = st.columns([4, 1])
@@ -232,8 +118,7 @@ def render_la_shipping_recommendation(master_df: pd.DataFrame, inventory_df: pd.
     <strong>💡 미국 창고(CGETC) 선적 일정 추천</strong><br>
     미국 창고의 상품별 <strong>예상 소진일</strong>을 기반으로, 재고 부족 사태를 방지하기 위해 
     미리 예약해야 하는 <strong>추천 선적 스케줄(Recommended Vessel)</strong>을 안내합니다.<br>
-    공공데이터포털(선박운항정보) OpenAPI를 통해 <strong>실제 출항 예정 선박</strong>을 우선 매칭하며, 
-    조회된 선박이 부족할 경우 가상의 정기선 스케줄로 자동 연장(Fallback)됩니다.
+    해양수산부 데이터를 통해 <strong>실제 출항 예정 선박</strong>을 매칭합니다.
     </div>
     """, unsafe_allow_html=True)
 
@@ -295,8 +180,8 @@ def render_la_shipping_recommendation(master_df: pd.DataFrame, inventory_df: pd.
     valid_metrics["소진일자_dt"] = pd.to_datetime(valid_metrics["예상소진일"])
     valid_metrics = valid_metrics.sort_values("소진일자_dt").reset_index(drop=True)
     
-    # 3. 스케줄 로드 (OpenAPI 호출)
-    schedules_df = fetch_openapi_schedules(today.strftime("%Y-%m-%d"), prt_ag_cd=selected_prt_cd, lead_time_days=lead_time, port_name=selected_port_name)
+    # 3. 스케줄 로드
+    schedules_df = fetch_schedules(today.strftime("%Y-%m-%d"), port_name=selected_port_name)
     schedules_df["ETA_dt"] = pd.to_datetime(schedules_df["ETA (LA 입항)"])
     
     st.markdown(f"### 🎯 상품별 선적 추천 ({selected_port_name} ➔ 미국 LA)")
@@ -339,11 +224,7 @@ def render_la_shipping_recommendation(master_df: pd.DataFrame, inventory_df: pd.
                     st.error(f"🚨 **추천 가능한 선적 스케줄이 없습니다!**  \n창고 입고를 위해 늦어도 **{target_port_eta.strftime('%Y-%m-%d')}** 까지는 항구에 도착(ETA)해야 하지만, 해상 운송으로는 기한을 맞출 수 없습니다. **항공 운송(Air Freight)**을 고려하세요.")
                 else:
                     recommended = possible_vessels.iloc[-1]
-                    
-                    is_scraper = recommended.get('조회방법') == 'Scraper'
-                    badge = "🚢 마스터 스케줄(Scraper)" if is_scraper else "🚢 확정 스케줄(API)"
-                    
-                    st.success(f"✅ **추천 선적 (Recommended Vessel): {recommended['Vessel']}**  `{badge}`")
+                    st.success(f"✅ **추천 선적 (Recommended Vessel): {recommended['Vessel']}**")
                     st.write(f"⏰ **화물 반입 마감(Cargo Cut-off)**: {recommended['Cut-off (화물 반입 마감)']}")
                     st.write(f"🚢 **ETD({selected_port_name} 출항)**: {recommended['ETD (출항)']}")
                     st.write(f"🛬 **ETA(LA 항구 입항)**: {recommended['ETA (LA 입항)']}")
@@ -352,8 +233,8 @@ def render_la_shipping_recommendation(master_df: pd.DataFrame, inventory_df: pd.
             st.divider()
             
     # 전체 선적 스케줄 렌더링 (부산항, 인천항 모두 고정 노출)
-    busan_schedules_df = fetch_openapi_schedules(today.strftime("%Y-%m-%d"), prt_ag_cd="020", lead_time_days=lead_time, port_name="부산항")
-    icn_schedules_df = fetch_openapi_schedules(today.strftime("%Y-%m-%d"), prt_ag_cd="030", lead_time_days=lead_time, port_name="인천항")
+    busan_schedules_df = fetch_schedules(today.strftime("%Y-%m-%d"), port_name="부산항")
+    icn_schedules_df = fetch_schedules(today.strftime("%Y-%m-%d"), port_name="인천항")
     
     st.markdown("### 📅 전체 선적 스케줄 (부산항 ➔ LA)")
     if busan_schedules_df.empty:
