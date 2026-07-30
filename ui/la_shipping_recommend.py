@@ -116,12 +116,13 @@ def render_la_shipping_recommendation(master_df: pd.DataFrame, inventory_df: pd.
         if st.button("🔄 마스터 스케줄 갱신", help="클릭 시 선사 사이트에서 최신 스케줄을 수집합니다."):
             with st.spinner("스크래퍼 실행 중... (약 10~30초 소요)"):
                 import subprocess
+                import sys
                 script_dir = os.path.dirname(os.path.abspath(__file__))
                 project_root = os.path.dirname(script_dir)
                 scraper_path = os.path.join(project_root, "scrapers", "scheduler_main.py")
                 
                 try:
-                    subprocess.run(["python", scraper_path], check=True, capture_output=True)
+                    subprocess.run([sys.executable, scraper_path], check=True, capture_output=True)
                     st.success("갱신 완료!")
                     st.rerun()
                 except subprocess.CalledProcessError as e:
