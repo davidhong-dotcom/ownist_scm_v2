@@ -2,10 +2,6 @@ import streamlit as st
 import pandas as pd
 from datetime import date, timedelta, datetime
 from data.processor import compute_metrics
-import requests
-import urllib.parse
-import xml.etree.ElementTree as ET
-import json
 import os
 
 def load_scraped_schedules(start_date_str: str, port_name: str) -> pd.DataFrame:
@@ -70,32 +66,6 @@ def load_scraped_schedules(start_date_str: str, port_name: str) -> pd.DataFrame:
         print(f"Error loading scraped schedules from Supabase: {e}")
         return pd.DataFrame(columns=["선적사", "Vessel", "Cut-off (화물 반입 마감)", "ETD (출항)", "ETA (LA 입항)", "Lead Time"])
 
-def generate_mock_schedules(start_date: date, weeks: int = 8, lead_time_days: int = 35, port_name: str = "부산항"):
-    """
-    Generate mock shipping schedules for the next N weeks.
-    Departs every Thursday.
-    """
-    schedules = []
-    # Find the next Thursday
-    days_ahead = 3 - start_date.weekday() # Thursday is 3
-    if days_ahead < 0: 
-        days_ahead += 7
-    next_thursday = start_date + timedelta(days=days_ahead)
-    
-    for i in range(weeks):
-        etd = next_thursday + timedelta(weeks=i)
-        eta = etd + timedelta(days=14)
-        cutoff = etd - timedelta(days=4) # Cut-off is usually a few days before ETD (Sunday)
-        
-        schedules.append({
-            "Vessel": f"MOCK VESSEL-{100+i}E",
-            "Cut-off (서류/화물 마감)": cutoff.strftime("%Y-%m-%d"),
-            "ETD (출항)": etd.strftime("%Y-%m-%d"),
-            "ETA (LA 입항)": eta.strftime("%Y-%m-%d"),
-            "Lead Time": "14일"
-        })
-        
-    return pd.DataFrame(schedules)
 
 @st.cache_data(ttl=3600)
 def fetch_schedules(start_date_str: str, port_name: str = "부산항") -> pd.DataFrame:
@@ -145,10 +115,8 @@ def render_la_shipping_recommendation(master_df: pd.DataFrame, inventory_df: pd.
     with st.expander("⚙️ 스케줄 시뮬레이션 설정", expanded=True):
         col1, col2, col3 = st.columns(3)
         with col1:
-            # 020: 부산, 030: 인천
-            port_opts = {"부산항": "020", "인천항": "030"}
-            selected_port_name = st.selectbox("출발지 (POL) 선택", list(port_opts.keys()))
-            selected_prt_cd = port_opts[selected_port_name]
+            port_options = ["부산항", "인천항"]
+            selected_port_name = st.selectbox("출발지 (POL) 선택", port_options)
         with col2:
             lead_time = st.number_input("총 리드타임 (해상14일+통관/내륙+창고입고)", min_value=10, max_value=100, value=35, step=1, 
                                         help="단순 해상 운송(약 14일)뿐만 아니라, LA 항만 하역/통관 대기 및 CGETC 창고까지의 내륙 운송/입고 소요 시간을 모두 합친 '실제 판매 가능까지의 총 소요 기간'을 입력합니다. (안전 기준 30~35일 권장)")
