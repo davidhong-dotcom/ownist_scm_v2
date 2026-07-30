@@ -5,11 +5,11 @@
     "voyage_no": "0011E",
     "origin_port": "KRPUS",
     "dest_port": "USLAX",
-    "etd": "2026-07-31",
-    "eta": "2026-08-12"
+    "etd": "2026-07-30",
+    "eta": "2026-08-11"
   },
   {
-    "carrier": "SM Line",
+    "carrier": "SML",
     "vessel_name": "HMM DIAMOND",
     "voyage_no": "0011E",
     "origin_port": "KRPUS",
@@ -18,16 +18,16 @@
     "eta": "2026-08-12"
   },
   {
-    "carrier": "SM Line",
-    "vessel_name": "SM KWANGYANG",
-    "voyage_no": "2605E",
+    "carrier": "HMM",
+    "vessel_name": "HMM RAON",
+    "voyage_no": "0025E",
     "origin_port": "KRPUS",
     "dest_port": "USLAX",
-    "etd": "2026-08-02",
-    "eta": "2026-08-14"
+    "etd": "2026-08-03",
+    "eta": "2026-08-16"
   },
   {
-    "carrier": "SM Line",
+    "carrier": "SML",
     "vessel_name": "HMM RAON",
     "voyage_no": "0025E",
     "origin_port": "KRPUS",
@@ -37,38 +37,146 @@
   },
   {
     "carrier": "HMM",
-    "vessel_name": "HMM RAON",
-    "voyage_no": "0025E",
-    "origin_port": "KRPUS",
-    "dest_port": "USLAX",
-    "etd": "2026-08-04",
-    "eta": "2026-08-17"
-  },
-  {
-    "carrier": "SM Line",
-    "vessel_name": "SM YANTIAN",
-    "voyage_no": "2605E",
-    "origin_port": "KRPUS",
-    "dest_port": "USLAX",
-    "etd": "2026-08-04",
-    "eta": "2026-08-15"
-  },
-  {
-    "carrier": "HMM",
-    "vessel_name": "HMM RUBY",
-    "voyage_no": "0014E",
-    "origin_port": "KRPUS",
-    "dest_port": "USLAX",
-    "etd": "2026-08-07",
-    "eta": "2026-08-19"
-  },
-  {
-    "carrier": "SM Line",
     "vessel_name": "HMM RUBY",
     "voyage_no": "0014E",
     "origin_port": "KRPUS",
     "dest_port": "USLAX",
     "etd": "2026-08-07",
     "eta": "2026-08-18"
+  },
+  {
+    "carrier": "SML",
+    "vessel_name": "HMM RUBY",
+    "voyage_no": "0014E",
+    "origin_port": "KRPUS",
+    "dest_port": "USLAX",
+    "etd": "2026-08-07",
+    "eta": "2026-08-18"
+  },
+  {
+    "carrier": "HMM",
+    "vessel_name": "HMM TURQUOISE",
+    "voyage_no": "0011E",
+    "origin_port": "KRPUS",
+    "dest_port": "USLAX",
+    "etd": "2026-08-09",
+    "eta": "2026-08-21"
+  },
+  {
+    "carrier": "SML",
+    "vessel_name": "HMM TURQUOISE",
+    "voyage_no": "0011E",
+    "origin_port": "KRPUS",
+    "dest_port": "USLAX",
+    "etd": "2026-08-10",
+    "eta": "2026-08-22"
+  },
+  {
+    "carrier": "SML",
+    "vessel_name": "HMM TOPAZ",
+    "voyage_no": "0013E",
+    "origin_port": "KRPUS",
+    "dest_port": "USLAX",
+    "etd": "2026-08-13",
+    "eta": "2026-08-25"
+  },
+  {
+    "carrier": "HMM",
+    "vessel_name": "PS6 TEMP CODE",
+    "voyage_no": "0001E",
+    "origin_port": "KRPUS",
+    "dest_port": "USLAX",
+    "etd": "2026-08-17",
+    "eta": "2026-08-29"
+  },
+  {
+    "carrier": "HMM",
+    "vessel_name": "HMM AQUAMARINE",
+    "voyage_no": "0013E",
+    "origin_port": "KRPUS",
+    "dest_port": "USLAX",
+    "etd": "2026-08-17",
+    "eta": "2026-08-29"
+  },
+  {
+    "carrier": "HMM",
+    "vessel_name": "HMM TOPAZ",
+    "voyage_no": "0013E",
+    "origin_port": "KRPUS",
+    "dest_port": "USLAX",
+    "etd": "2026-08-17",
+    "eta": "2026-08-29"
+  },
+  {
+    "carrier": "SML",
+    "vessel_name": "TO BE NOMINATED H",
+    "voyage_no": "0001E",
+    "origin_port": "KRPUS",
+    "dest_port": "USLAX",
+    "etd": "2026-08-17",
+    "eta": "2026-08-29"
+  },
+  {
+    "carrier": "SML",
+    "vessel_name": "HMM HANUL",
+    "voyage_no": "0027E",
+    "origin_port": "KRPUS",
+    "dest_port": "USLAX",
+    "etd": "2026-08-17",
+    "eta": "2026-08-29"
+  },
+  {
+    "carrier": "SML",
+    "vessel_name": "HMM AQUAMARINE",
+    "voyage_no": "0013E",
+    "origin_port": "KRPUS",
+    "dest_port": "USLAX",
+    "etd": "2026-08-17",
+    "eta": "2026-08-29"
+  },
+  {
+    "carrier": "HMM",
+    "vessel_name": "HMM MIR",
+    "voyage_no": "0022E",
+    "origin_port": "KRPUS",
+    "dest_port": "USLAX",
+    "etd": "2026-08-23",
+    "eta": "2026-09-05"
+  },
+  {
+    "carrier": "SML",
+    "vessel_name": "HMM MIR",
+    "voyage_no": "0022E",
+    "origin_port": "KRPUS",
+    "dest_port": "USLAX",
+    "etd": "2026-08-23",
+    "eta": "2026-09-05"
+  },
+  {
+    "carrier": "SML",
+    "vessel_name": "HMM EMERALD",
+    "voyage_no": "0015E",
+    "origin_port": "KRPUS",
+    "dest_port": "USLAX",
+    "etd": "2026-08-28",
+    "eta": "2026-09-05"
+  },
+  {
+    "carrier": "SML",
+    "vessel_name": "HMM NURI",
+    "voyage_no": "0021E",
+    "origin_port": "KRPUS",
+    "dest_port": "USLAX",
+    "etd": "2026-08-31",
+    "eta": "2026-09-12"
+  },
+  {
+    "carrier": "HMM",
+    "vessel_name": "HMM EMERALD",
+    "voyage_no": "0015E",
+    "origin_port": "KRPUS",
+    "dest_port": "USLAX",
+    "etd": "2026-09-01",
+    "eta": "2026-09-14"
   }
 ]

@@ -8,5 +8,4 @@ gspread>=6.0.0
 google-auth>=2.29.0
 supabase>=2.0.0
 msoffcrypto-tool>=5.0.0
-playwright
 httpx>=0.20.0
