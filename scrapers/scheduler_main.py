@@ -38,6 +38,14 @@ def main():
         print(f"[{datetime.now()}] 저장할 데이터가 없습니다.")
         return
         
+    print(f"[{datetime.now()}] 총 {len(schedules)}건의 스케줄 수집 완료!")
+    
+    # JSON 파일로 저장
+    save_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "master_schedules.json")
+    with open(save_path, "w", encoding="utf-8") as f:
+        json.dump(schedules, f, ensure_ascii=False, indent=2)
+    print(f"[{datetime.now()}] {save_path} 에 저장 완료.")
+        
     try:
         import toml
         from supabase import create_client, Client
