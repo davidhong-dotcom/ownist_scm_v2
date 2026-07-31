@@ -303,8 +303,15 @@ def render_metrics_table(metrics_df: pd.DataFrame, key: str = None):
 # 기간별(일자별/월별) 출고현황 테이블
 # ════════════════════════════════════════════════
 def render_shipping_table(daily_df: pd.DataFrame, start_date, end_date, period_type="daily"):
-    title = "일자별" if period_type == "daily" else "월별"
-    date_col = "출고일자" if period_type == "daily" else "출고월"
+    if period_type == "daily":
+        title = "일자별"
+        date_col = "출고일자"
+    elif period_type == "monthly":
+        title = "월별"
+        date_col = "출고월"
+    else:
+        title = "주문사별(채널별)"
+        date_col = "주문사"
     
     st.markdown(
         f'<div class="sec-title">🚚 {title} 출고현황 ({start_date} ~ {end_date})</div>',
@@ -313,6 +320,46 @@ def render_shipping_table(daily_df: pd.DataFrame, start_date, end_date, period_t
 
     if daily_df.empty:
         st.info("선택한 기간에 출고 데이터가 없습니다.")
+        return
+
+    if period_type == "company":
+        # 원본 데이터(filtered_shipping)가 들어옴
+        daily_df_copy = daily_df.copy()
+        daily_df_copy["출고월"] = pd.to_datetime(daily_df_copy["출고일자"]).dt.strftime("%Y-%m")
+        
+        pivot = daily_df_copy.pivot_table(
+            index="주문사",
+            columns="출고월",
+            values="출고수량",
+            aggfunc="sum",
+            fill_value=0
+        )
+        pivot.columns = [str(c) for c in pivot.columns]
+        
+        # 총 출고수량 계산
+        pivot["총 출고수량"] = pivot.sum(axis=1)
+        # 내림차순 정렬 (총 출고수량이 큰 채널이 맨 위로)
+        pivot = pivot.sort_values("총 출고수량", ascending=False).reset_index()
+        pivot.rename(columns={"주문사": "주문사(채널)"}, inplace=True)
+        
+        # 차트: 행=출고월, 열=주문사(채널)
+        chart_data = pivot.set_index("주문사(채널)").drop(columns=["총 출고수량"]).T
+        st.line_chart(chart_data)
+
+        st.markdown("#### 📉 거래처별 월별 총 출고수량")
+        # 숫자형(수량) 컬럼에 천단위 콤마 포맷 적용
+        numeric_cols = [col for col in pivot.columns if col != "주문사(채널)"]
+        format_dict = {col: "{:,.0f}" for col in numeric_cols}
+        
+        st.dataframe(pivot.style.format(format_dict), width="stretch", height=500)
+        
+        csv = pivot.to_csv(index=False, encoding="utf-8-sig")
+        st.download_button(
+            "⬇️ 출고현황 CSV 다운로드",
+            data=csv,
+            file_name=f"shipping_by_channel_{start_date}_{end_date}.csv",
+            mime="text/csv",
+        )
         return
 
     # 피벗: 행=상품코드+상품명, 열=날짜/월

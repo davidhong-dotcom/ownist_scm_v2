@@ -440,24 +440,28 @@ def parse_ownist_shipping_file(file_obj, password) -> pd.DataFrame:
 def parse_daily_shipping_file(file_obj) -> pd.DataFrame:
     """
     일자별 출고현황_YYYYMMDD_HHMMSS.xls 파싱 (암호 없음)
-    
-    A열(0): 출고일자
-    E열(4): 거래처명(주문사)
-    F열(5): 상품코드
-    H열(7): 상품명
-    S열(18): 출고수량
     """
-    # 암호가 없으므로 바로 읽기
     raw = pd.read_excel(
         file_obj,
         dtype=str,
     ).fillna("")
+    
+    # 헤더 공백 제거
+    raw.columns = raw.columns.astype(str).str.strip()
 
-    # 열 인덱스 기반 추출
-    # A=0, E=4, F=5, H=7, S=18
-    IDX = {"출고일자": 0, "주문사": 4, "상품코드": 5, "상품명": 7, "출고량": 18}
+    date_col = _find_col(raw, ["일자", "일 자", "출고일자"])
+    company_col = _find_col(raw, ["거래처", "거래처명", "주문사"])
+    code_col = _find_col(raw, ["상품코드", "품목코드"])
+    name_col = _find_col(raw, ["품명", "상품명"])
+    qty_col = _find_col(raw, ["수불수량", "출고량", "출고수량"])
 
-    df = pd.DataFrame({k: raw.iloc[:, v] for k, v in IDX.items()})
+    df = pd.DataFrame({
+        "출고일자": raw[date_col],
+        "주문사": raw[company_col],
+        "상품코드": raw[code_col],
+        "상품명": raw[name_col],
+        "출고량": raw[qty_col]
+    })
 
     # 데이터 정제
     df["출고일자"]  = pd.to_datetime(df["출고일자"], errors="coerce").dt.date
@@ -473,9 +477,6 @@ def parse_daily_shipping_file(file_obj) -> pd.DataFrame:
     # 유효 행만 유지
     df = df.dropna(subset=["출고일자"])
     df = df[df["상품코드"].str.strip() != ""].reset_index(drop=True)
-
-    # 동일 출고일자, 주문사, 상품코드가 여러 줄 있을 수 있으므로 반환 전 합산은 하지 않고,
-    # supabase_client.py 의 upsert 로직에서 groupby 하도록 둡니다.
 
     return df[[
         "출고일자", "주문사", "주문번호",
@@ -711,6 +712,15 @@ def aggregate_shipping_monthly(df: pd.DataFrame) -> pd.DataFrame:
         df_copy.groupby(["출고월", "상품코드"], as_index=False)["출고수량"]
           .sum()
           .sort_values(["출고월", "상품코드"])
+          .reset_index(drop=True)
+    )
+
+def aggregate_shipping_by_order_company(df: pd.DataFrame) -> pd.DataFrame:
+    """주문사(거래처)별 × 상품코드별 출고수량 집계 (출고현황 탭용 피벗 원본)"""
+    return (
+        df.groupby(["주문사", "상품코드"], as_index=False)["출고수량"]
+          .sum()
+          .sort_values(["주문사", "상품코드"])
           .reset_index(drop=True)
     )
 

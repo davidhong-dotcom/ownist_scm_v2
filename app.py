@@ -377,10 +377,10 @@ if menu == "⚙️ 데이터 설정":
         with c2:
             st.markdown("#### 출고완료 내역")
             shipping_file = st.file_uploader(
-                "기간별 출고완료 내역 (.xlsx)",
-                type=["xlsx"],
+                "출고완료 내역 (.xls / .xlsx)",
+                type=["xls", "xlsx"],
                 key="ship_upload_domestic",
-                help="기간별 출고완료 내역_(주)오니스트_...xlsx 파일을 올려주세요.",
+                help="기간별 출고완료 내역 또는 일자별 출고현황 파일을 올려주세요.",
             )
             
             if shipping_file:
@@ -397,7 +397,12 @@ if menu == "⚙️ 데이터 설정":
                             password_candidates = [today_str, yesterday_str] + dates_in_name
                             password_candidates = list(dict.fromkeys(password_candidates)) # 중복 제거
                             
-                            new_shipping_df = parse_ownist_shipping_file(shipping_file, password=password_candidates)
+                            if "일자별" in shipping_file.name:
+                                from data.processor import parse_daily_shipping_file
+                                new_shipping_df = parse_daily_shipping_file(shipping_file)
+                            else:
+                                new_shipping_df = parse_ownist_shipping_file(shipping_file, password=password_candidates)
+                                
                             upsert_count, filtered_df = upsert_ownist_shipping(new_shipping_df, channel="CK로지스")
                             st.session_state["shipping_df"] = None  # 캐시 초기화
                             
@@ -779,44 +784,37 @@ elif menu == "🚚 기간별 출고현황":
             st.session_state["shipping_df"], start_date, end_date
         )
         
+        # 1차 필터: 기간, 마스터에 존재하는 상품
+        filtered_shipping = filtered_shipping[filtered_shipping["상품코드"].isin(filtered_master["상품코드"])]
+
+        # 2차 필터: 검색어 (상품 / 카테고리)
+        if selected_product:
+            selected_codes = [p.split(" - ")[0] for p in selected_product]
+            filtered_shipping = filtered_shipping[filtered_shipping["상품코드"].astype(str).isin(selected_codes)]
+        elif selected_category:
+            cat_codes = prod_list["상품코드"].tolist()
+            filtered_shipping = filtered_shipping[filtered_shipping["상품코드"].isin(cat_codes)]
+            
+        # 3차: 상품명 조인
+        if "상품명" in filtered_shipping.columns:
+            filtered_shipping = filtered_shipping.drop(columns=["상품명"])
+        filtered_shipping = filtered_shipping.merge(filtered_master[["상품코드", "상품명"]], on="상품코드", how="left")
+
         # 일자별 / 월별 데이터 집계
         daily = aggregate_shipping_daily(filtered_shipping)
         monthly = aggregate_shipping_monthly(filtered_shipping)
 
-        # 필터링된 마스터 데이터에 존재하는 상품코드만 남기기 (상품구분 필터 적용)
-        daily = daily[daily["상품코드"].isin(filtered_master["상품코드"])]
-        monthly = monthly[monthly["상품코드"].isin(filtered_master["상품코드"])]
-
-        # 상품명 조인
-        daily = daily.merge(
-            filtered_master[["상품코드", "상품명"]],
-            on="상품코드", how="left",
-        )
-        monthly = monthly.merge(
-            filtered_master[["상품코드", "상품명"]],
-            on="상품코드", how="left",
-        )
-        
-        # 검색어 필터링 적용
-        if selected_product:
-            # 상품이 선택된 경우, 선택된 상품코드들로 필터링
-            selected_codes = [p.split(" - ")[0] for p in selected_product]
-            daily = daily[daily["상품코드"].astype(str).isin(selected_codes)]
-            monthly = monthly[monthly["상품코드"].astype(str).isin(selected_codes)]
-        elif selected_category:
-            # 상품은 선택 안 했지만, 품목구분이 선택된 경우
-            cat_codes = prod_list["상품코드"].tolist()
-            daily = daily[daily["상품코드"].isin(cat_codes)]
-            monthly = monthly[monthly["상품코드"].isin(cat_codes)]
-
         # 탭 분리
-        tab1, tab2 = st.tabs(["일자별 출고현황", "월별 출고현황"])
+        tab1, tab2, tab3 = st.tabs(["일자별 출고현황", "월별 출고현황", "주문사별(채널별) 출고현황"])
         
         with tab1:
             render_shipping_table(daily, start_date, end_date, period_type="daily")
             
         with tab2:
             render_shipping_table(monthly, start_date, end_date, period_type="monthly")
+            
+        with tab3:
+            render_shipping_table(filtered_shipping, start_date, end_date, period_type="company")
 
     except Exception as e:
         render_error(f"출고현황 조회 오류: {e}")
