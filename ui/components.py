@@ -325,6 +325,17 @@ def render_shipping_table(daily_df: pd.DataFrame, start_date, end_date, period_t
         fill_value=0,
     )
     pivot.columns = [str(c) for c in pivot.columns]
+    
+    # ── [차트 추가] ──
+    chart_data = pivot.copy()
+    if isinstance(chart_data.index, pd.MultiIndex):
+        chart_data.index = [str(idx[1]) for idx in chart_data.index]
+    else:
+        chart_data.index = [str(idx) for idx in chart_data.index]
+    chart_data = chart_data.T
+    st.line_chart(chart_data)
+    # ───────────────
+
     pivot["합계"] = pivot.sum(axis=1)
     pivot = pivot.sort_values("합계", ascending=False).reset_index()
     # 숫자형(수량) 컬럼에 천단위 콤마 포맷 적용
