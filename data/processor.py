@@ -235,6 +235,13 @@ def load_po_from_gsheet(spreadsheet_url: str, sheet_name: str = "발주") -> pd.
         else:
             df["입고상태"] = "대기"
             
+        # 비고(메모)/특이사항 정제 (옵션) - S&OP 대시보드 용
+        remark_col = _find_col(df, ["특이사항", "비고", "메모", "참고사항"], required=False)
+        if remark_col:
+            df["비고"] = df[remark_col].str.strip()
+        else:
+            df["비고"] = ""
+            
         # 입고상태가 '완료'인 것은 시뮬레이션의 '예정' 수량에서 제외하기 위해 필요
         return df.reset_index(drop=True)
     except Exception as e:

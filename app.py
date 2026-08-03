@@ -34,6 +34,8 @@ if 'ui.multi_level_calendar' in sys.modules:
     importlib.reload(sys.modules['ui.multi_level_calendar'])
 if 'ui.scm_documents' in sys.modules:
     importlib.reload(sys.modules['ui.scm_documents'])
+if 'ui.sop_dashboard' in sys.modules:
+    importlib.reload(sys.modules['ui.sop_dashboard'])
 
 import re
 
@@ -74,6 +76,7 @@ from data.supabase_client import (
     upsert_inventory_data,
 )
 from ui.sop_simulation import render_sop_simulation
+from ui.sop_dashboard import render_sop_dashboard
 
 
 # ════════════════════════════════════════════════
@@ -184,6 +187,7 @@ today = get_today_kst()
 with st.sidebar:
     st.markdown("### 📌 메뉴")
     main_menus = [
+        "📢 S&OP 종합 대시보드",
         "📊 재고 대시보드", "📊 채널별 재고 대시보드", "🚚 기간별 출고현황", 
         "📦 발주 및 입고현황", "🚢 선적 및 이동 관리", "🚢 미국 선적 추천 일정", 
         "🗓️ 다단계 예상재고 캘린더", "⚙️ 데이터 설정"
@@ -621,6 +625,15 @@ if sel_channel != "전체":
         filtered_inv = filtered_inv[filtered_inv["채널"] == sel_channel]
     if "채널" in filtered_ship.columns:
         filtered_ship = filtered_ship[filtered_ship["채널"] == sel_channel]
+
+# ════════════════════════════════════════════════
+# 메뉴: 📢 S&OP 종합 대시보드
+# ════════════════════════════════════════════════
+if menu == "📢 S&OP 종합 대시보드":
+    try:
+        render_sop_dashboard()
+    except Exception as e:
+        render_error(f"S&OP 대시보드 로드 오류: {e}")
 
 # ════════════════════════════════════════════════
 # 메뉴: 📊 재고 대시보드
