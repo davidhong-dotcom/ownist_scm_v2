@@ -89,8 +89,9 @@ DASHBOARD_CSS = """
     padding-top: 1rem !important;
     padding-bottom: 1rem !important;
 }
+/* 헤더 전체를 숨기면 사이드바 펼치기 버튼도 숨겨지므로 투명하게만 처리 */
 [data-testid="stHeader"] {
-    display: none !important;
+    background-color: transparent !important;
 }
 
 /* 필터 영역 고정 (Sticky) */
