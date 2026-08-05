@@ -288,5 +288,54 @@ def render_sop_dashboard():
         height=600
     )
 
+    st.divider()
 
+    # --- 거래처별 월별 총 출고수량 ---
+    st.markdown("### 📉 거래처별 월별 총 출고수량")
+    
+    if shipping_df is not None and not shipping_df.empty and "주문사" in shipping_df.columns:
+        st.markdown("##### 📌 분석 대상 거래처(채널) 필터")
+        
+        valid_customers = shipping_df["주문사"].replace("", np.nan).dropna().unique().tolist()
+        all_customers = sorted(valid_customers)
+        
+        selected_customers = st.multiselect(
+            "조회할 거래처(채널)를 선택하세요 (※ 비워두면 전체 거래처가 조회됩니다)",
+            options=all_customers,
+            default=[],
+            key="sop_customer_filter",
+            placeholder="여기를 클릭하여 거래처를 선택하세요..."
+        )
+        
+        if selected_customers:
+            filtered_ship = shipping_df[shipping_df["주문사"].isin(selected_customers)].copy()
+        else:
+            filtered_ship = shipping_df.copy()
+            
+        if not filtered_ship.empty:
+            filtered_ship["출고월"] = pd.to_datetime(filtered_ship["출고일자"]).dt.strftime("%Y-%m")
+            
+            pivot_df = pd.pivot_table(
+                filtered_ship,
+                index="주문사",
+                columns="출고월",
+                values="출고수량",
+                aggfunc="sum",
+                fill_value=0
+            )
+            
+            pivot_df["총 출고수량"] = pivot_df.sum(axis=1)
+            
+            months = sorted([c for c in pivot_df.columns if c != "총 출고수량"])
+            pivot_df = pivot_df[months + ["총 출고수량"]]
+            
+            pivot_df = pivot_df.reset_index().rename(columns={"주문사": "주문사(채널)"})
+            pivot_df = pivot_df.sort_values("총 출고수량", ascending=False).reset_index(drop=True)
+            
+            format_dict = {col: format_num_0 for col in pivot_df.columns if col != "주문사(채널)"}
+            styled_pivot = pivot_df.style.format(format_dict)
+            
+            st.dataframe(styled_pivot, use_container_width=True)
+        else:
+            st.info("해당 조건의 출고 데이터가 없습니다.")
 
