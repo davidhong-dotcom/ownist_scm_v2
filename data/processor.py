@@ -627,7 +627,7 @@ def parse_multi_channel_file(file_obj, target_date: datetime.date, channel_name:
             ship_col = col_idx("K")
         elif df.shape[1] > col_idx("H"):
             code_col = col_idx("B")
-            inv_col = col_idx("H")
+            inv_col = [col_idx("H"), col_idx("L"), col_idx("P")]
     elif channel_name == "신세계면세점":
         code_col = col_idx("D")
         ship_col = col_idx("Q")
@@ -672,10 +672,19 @@ def parse_multi_channel_file(file_obj, target_date: datetime.date, channel_name:
     
     # Inventory Data 구성
     inv_df = pd.DataFrame()
-    if inv_col is not None and inv_col < df.shape[1]:
-        inv_df = df[[code_col]].copy()
-        inv_df.columns = ['상품코드']
-        inv_df['현재고'] = clean_numeric(df[inv_col])
+    if inv_col is not None:
+        if isinstance(inv_col, list):
+            inv_df = df[[code_col]].copy()
+            inv_df.columns = ['상품코드']
+            total_inv = pd.Series(0.0, index=df.index)
+            for c in inv_col:
+                if c < df.shape[1]:
+                    total_inv += clean_numeric(df[c])
+            inv_df['현재고'] = total_inv
+        elif inv_col < df.shape[1]:
+            inv_df = df[[code_col]].copy()
+            inv_df.columns = ['상품코드']
+            inv_df['현재고'] = clean_numeric(df[inv_col])
         # 현재고가 음수인 경우는 0으로 치환하거나 그대로 둘 수 있음 (보통 0이상 유지)
     
     return ship_df, inv_df
